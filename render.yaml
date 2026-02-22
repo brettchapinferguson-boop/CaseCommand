@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: casecommand
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn server:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: CLAUDE_MODEL
+        value: claude-sonnet-4-5-20250514
+      - key: PYTHON_VERSION
+        value: 3.11.0
