@@ -3,11 +3,16 @@ services:
     name: casecommand
     runtime: python
     buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn server:app --host 0.0.0.0 --port $PORT
+    startCommand: uvicorn server:app --host 0.0.0.0 --port $PORT --forwarded-allow-ips='*'
+    healthCheckPath: /api/health
     envVars:
       - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: AUTH_TOKEN
         sync: false
       - key: CLAUDE_MODEL
         value: claude-sonnet-4-5-20250514
       - key: PYTHON_VERSION
         value: 3.11.0
+      - key: LOG_LEVEL
+        value: INFO

@@ -7,10 +7,11 @@ def test_health_endpoint(client):
     data = resp.json()
     assert data["status"] == "ok"
     assert data["api_key_configured"] is True
-    assert data["cases"] == 3
+    assert data["cases"] == 3  # seeded demo cases
     assert "active_sessions" in data
     assert "timestamp" in data
     assert "model" in data
+    assert "auth_enabled" in data
 
 
 def test_ui_served(client):

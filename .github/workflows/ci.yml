@@ -32,8 +32,15 @@ jobs:
           ANTHROPIC_API_KEY: sk-ant-test-key-for-ci
         run: python -m pytest tests/ -v
 
-      - name: Check server starts
+      - name: Check server imports
         env:
           ANTHROPIC_API_KEY: sk-ant-test-key-for-ci
-        run: |
-          timeout 5 python -c "from server import app; print('Server imports OK')" || true
+        run: python -c "from server import app; print('Server imports OK')"
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t casecommand .

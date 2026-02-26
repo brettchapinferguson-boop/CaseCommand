@@ -18,6 +18,7 @@ import uuid
 import time
 import logging
 import asyncio
+import secrets
 import httpx
 
 from pathlib import Path
@@ -25,10 +26,13 @@ from datetime import datetime
 from typing import Dict, List, Optional
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi import FastAPI, HTTPException, Request, Response, Depends
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from pydantic import BaseModel, Field
+
+import database as db
 
 
 # ── Logging ───────────────────────────────────────
@@ -59,6 +63,10 @@ API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 MODEL = os.environ.get("CLAUDE_MODEL", "claude-sonnet-4-5-20250514")
 ALLOWED_ORIGINS = os.environ.get("ALLOWED_ORIGINS", "*").split(",")
 
+# ── Auth config ───────────────────────────────────
+AUTH_TOKEN = os.environ.get("AUTH_TOKEN", "")
+AUTH_ENABLED = AUTH_TOKEN != ""
+
 # ── Session config ────────────────────────────────
 SESSION_TTL_SECONDS = int(os.environ.get("SESSION_TTL_SECONDS", "3600"))
 SESSION_CLEANUP_INTERVAL = int(os.environ.get("SESSION_CLEANUP_INTERVAL", "300"))
@@ -71,6 +79,19 @@ RATE_LIMIT_WINDOW = int(os.environ.get("RATE_LIMIT_WINDOW", "60"))
 # ── Input limits ──────────────────────────────────
 MAX_MESSAGE_LENGTH = int(os.environ.get("MAX_MESSAGE_LENGTH", "50000"))
 MAX_SYSTEM_PROMPT_LENGTH = int(os.environ.get("MAX_SYSTEM_PROMPT_LENGTH", "100000"))
+
+# ── Phase labels ──────────────────────────────────
+PHASES = [
+    "Pre-Suit",
+    "Filing",
+    "Pleadings",
+    "Discovery",
+    "Depositions",
+    "Experts",
+    "Motions",
+    "Pre-Trial",
+    "Trial",
+]
 
 
 # ── Sessions (in-memory with TTL cleanup) ─────────
@@ -115,7 +136,11 @@ async def _cleanup_expired_sessions():
         for sid in expired:
             del sessions[sid]
         if expired:
-            logger.info("Cleaned up %d expired sessions, %d remaining", len(expired), len(sessions))
+            logger.info(
+                "Cleaned up %d expired sessions, %d remaining",
+                len(expired),
+                len(sessions),
+            )
 
 
 # ── Rate Limiting ─────────────────────────────────
@@ -137,6 +162,21 @@ def _check_rate_limit(client_ip: str) -> bool:
     return True
 
 
+# ── Auth dependency ───────────────────────────────
+async def verify_auth(request: Request):
+    """Verify bearer token if AUTH_TOKEN is configured."""
+    if not AUTH_ENABLED:
+        return
+
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(401, "Missing or invalid Authorization header")
+
+    token = auth_header[7:]
+    if not secrets.compare_digest(token, AUTH_TOKEN):
+        raise HTTPException(401, "Invalid authentication token")
+
+
 # ── Request Models ────────────────────────────────
 class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=MAX_MESSAGE_LENGTH)
@@ -151,128 +191,36 @@ class AIRequest(BaseModel):
     temperature: float = Field(0.3, ge=0.0, le=1.0)
 
 
-# ── Demo Cases ────────────────────────────────────
-PHASES = [
-    "Pre-Suit",
-    "Filing",
-    "Pleadings",
-    "Discovery",
-    "Depositions",
-    "Experts",
-    "Motions",
-    "Pre-Trial",
-    "Trial",
-]
-CASES = [
-    {
-        "id": "c1",
-        "name": "Rodriguez v. Smith Trucking",
-        "number": "24STCV12345",
-        "type": "Personal Injury",
-        "client": "Maria Rodriguez",
-        "opposing": "Smith Trucking, Inc.",
-        "phase": 3,
-        "specials": 88000,
-        "valuation": {"lo": 150, "mid": 275, "hi": 450},
-        "deadline": {
-            "date": "Mar 11",
-            "text": "45-Day Discovery Motion",
-            "urgent": True,
-        },
-        "modules": {
-            "pleadings": {
-                "status": "complete",
-                "label": "5 COAs filed",
-                "detail": "Negligence, MV Neg, Respondeat Superior, Neg Entrustment, Neg Per Se",
-            },
-            "discovery": {
-                "status": "active",
-                "label": "5 deficient responses",
-                "detail": "M&C letter drafted",
-            },
-            "trial": {
-                "status": "building",
-                "label": "Cross: J. Smith (25 Qs)",
-                "detail": "6 chapters, 15 source-linked",
-            },
-            "settlement": {
-                "status": "monitoring",
-                "label": "Post-discovery trigger",
-                "detail": "Reassess after discovery",
-            },
-        },
-    },
-    {
-        "id": "c2",
-        "name": "Chen v. Pacific Properties",
-        "number": "25STCV02890",
-        "type": "Premises Liability",
-        "client": "David Chen",
-        "opposing": "Pacific Properties LLC",
-        "phase": 2,
-        "specials": 34500,
-        "valuation": {"lo": 55, "mid": 95, "hi": 165},
-        "deadline": {
-            "date": "Mar 28",
-            "text": "Defendant Response Due",
-            "urgent": False,
-        },
-        "modules": {
-            "pleadings": {
-                "status": "complete",
-                "label": "3 COAs filed",
-                "detail": "Premises Liability, Negligence, Breach",
-            },
-            "discovery": {
-                "status": "pending",
-                "label": "After answer",
-                "detail": "Prepare once defendant answers",
-            },
-            "settlement": {
-                "status": "active",
-                "label": "Demand sent: $85K",
-                "detail": "Response due Mar 15",
-            },
-        },
-    },
-    {
-        "id": "c3",
-        "name": "Williams v. TechStart",
-        "number": None,
-        "type": "Employment — FEHA",
-        "client": "Angela Williams",
-        "opposing": "TechStart Inc.",
-        "phase": 1,
-        "specials": 128000,
-        "valuation": {"lo": 200, "mid": 425, "hi": 750},
-        "deadline": {
-            "date": "Mar 1",
-            "text": "Complete Intake & File",
-            "urgent": True,
-        },
-        "modules": {
-            "pleadings": {
-                "status": "active",
-                "label": "Analyzing 5 COAs",
-                "detail": "WT, Discrim, Harassment, Retaliation, Breach",
-            },
-            "settlement": {
-                "status": "assessing",
-                "label": "High-value FEHA",
-                "detail": "Recommend filing first for leverage",
-            },
-        },
-    },
-]
+class CaseCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=200)
+    number: Optional[str] = Field(None, max_length=50)
+    type: str = Field(..., min_length=1, max_length=100)
+    client: str = Field(..., min_length=1, max_length=200)
+    opposing: str = Field(..., min_length=1, max_length=200)
+    phase: int = Field(0, ge=0, le=8)
+    specials: int = Field(0, ge=0)
+    valuation: Optional[Dict] = None
+    deadline: Optional[Dict] = None
+    modules: Optional[Dict] = None
 
 
-def get_case(cid: str):
-    return next((c for c in CASES if c["id"] == cid), None)
+class CaseUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=200)
+    number: Optional[str] = Field(None, max_length=50)
+    type: Optional[str] = Field(None, min_length=1, max_length=100)
+    client: Optional[str] = Field(None, min_length=1, max_length=200)
+    opposing: Optional[str] = Field(None, min_length=1, max_length=200)
+    phase: Optional[int] = Field(None, ge=0, le=8)
+    specials: Optional[int] = Field(None, ge=0)
+    valuation: Optional[Dict] = None
+    deadline: Optional[Dict] = None
+    modules: Optional[Dict] = None
 
 
 # ── CaseCommander System Prompt ───────────────────
-def build_prompt(case: Optional[Dict] = None) -> str:
+async def build_prompt(case: Optional[Dict] = None) -> str:
     now = datetime.now().strftime("%A, %B %d, %Y at %I:%M %p")
+    cases = await db.get_all_cases()
     p = f"""You are CaseCommander, the AI litigation intelligence system for LawClaw.
 
 You serve Brett Ferguson (California attorney, SBN 281519, Law Office of Brett Ferguson, Long Beach).
@@ -293,11 +241,11 @@ DATE: {now}
 
 ═══ ACTIVE CASES ═══
 """
-    for c in CASES:
+    for c in cases:
         phase = PHASES[c["phase"]] if c["phase"] < len(PHASES) else "?"
         urg = (
             f" ⚠️ URGENT: {c['deadline']['text']} ({c['deadline']['date']})"
-            if c.get("deadline", {}).get("urgent")
+            if c.get("deadline") and c["deadline"].get("urgent")
             else ""
         )
         p += f"• {c['name']} | {c['type']} | {phase} | ${c['specials']:,} specials | ${c['valuation']['mid']}K mid{urg}\n"
@@ -336,7 +284,17 @@ STYLE: Lead with most important info. Be direct. Specific numbers/dates/cases. E
     return p
 
 
-# ── Claude API (server-side) ─────────────────────
+# ── Claude API (server-side, shared client) ───────
+_http_client: Optional[httpx.AsyncClient] = None
+
+
+def _get_http_client() -> httpx.AsyncClient:
+    global _http_client
+    if _http_client is None or _http_client.is_closed:
+        _http_client = httpx.AsyncClient(timeout=120)
+    return _http_client
+
+
 async def call_claude(
     system: str,
     messages: List[Dict],
@@ -364,14 +322,15 @@ async def call_claude(
         "messages": messages[-20:],
     }
 
+    client = _get_http_client()
+
     for attempt in range(3):
         try:
-            async with httpx.AsyncClient(timeout=120) as client:
-                resp = await client.post(
-                    "https://api.anthropic.com/v1/messages",
-                    headers=headers,
-                    json=payload,
-                )
+            resp = await client.post(
+                "https://api.anthropic.com/v1/messages",
+                headers=headers,
+                json=payload,
+            )
             if resp.status_code == 200:
                 data = resp.json()
                 text = "".join(
@@ -399,7 +358,9 @@ async def call_claude(
                 )
                 await asyncio.sleep(wait)
                 continue
-            logger.error("Claude API error %d: %s", resp.status_code, resp.text[:200])
+            logger.error(
+                "Claude API error %d: %s", resp.status_code, resp.text[:200]
+            )
             return {
                 "success": False,
                 "text": "",
@@ -412,13 +373,36 @@ async def call_claude(
                 continue
             return {"success": False, "text": "", "error": "AI service timeout"}
         except Exception as e:
-            logger.exception("Claude API unexpected error (attempt %d/3)", attempt + 1)
+            logger.exception(
+                "Claude API unexpected error (attempt %d/3)", attempt + 1
+            )
             if attempt < 2:
                 await asyncio.sleep(1)
                 continue
             return {"success": False, "text": "", "error": "AI service unavailable"}
 
     return {"success": False, "text": "", "error": "Max retries exceeded"}
+
+
+# ── UI cache ──────────────────────────────────────
+_cached_ui: Optional[str] = None
+
+
+def _load_ui() -> Optional[str]:
+    """Load the UI HTML file once."""
+    global _cached_ui
+    base = Path(__file__).parent
+    for path in [
+        base / "static" / "index.html",
+        base / "index.html",
+        base / "casecommand-ui.html",
+    ]:
+        if path.exists():
+            _cached_ui = path.read_text()
+            logger.info("Loaded UI from %s", path)
+            return _cached_ui
+    logger.warning("No UI file found")
+    return None
 
 
 # ── Lifespan ──────────────────────────────────────
@@ -430,6 +414,10 @@ async def lifespan(app: FastAPI):
     logger.info("CaseCommand Server v2.0 starting")
     logger.info("API key: %s", k)
     logger.info("Model: %s", MODEL)
+    logger.info(
+        "Auth: %s",
+        "enabled" if AUTH_ENABLED else "disabled (set AUTH_TOKEN to enable)",
+    )
     logger.info("Listening on http://localhost:%s", port)
     logger.info(
         "Session TTL: %ds, cleanup interval: %ds, max sessions: %d",
@@ -437,6 +425,13 @@ async def lifespan(app: FastAPI):
         SESSION_CLEANUP_INTERVAL,
         MAX_SESSIONS,
     )
+
+    # Initialize database
+    await db.init_db()
+    logger.info("Database initialized at %s", db.DB_PATH)
+
+    # Load UI into memory
+    _load_ui()
 
     # Start background session cleanup
     cleanup_task = asyncio.create_task(_cleanup_expired_sessions())
@@ -449,18 +444,28 @@ async def lifespan(app: FastAPI):
         await cleanup_task
     except asyncio.CancelledError:
         pass
+
+    # Close shared HTTP client
+    global _http_client
+    if _http_client and not _http_client.is_closed:
+        await _http_client.aclose()
+        _http_client = None
+
     logger.info("CaseCommand Server shutting down")
 
 
 # ── FastAPI ───────────────────────────────────────
 app = FastAPI(title="CaseCommand", version="2.0", lifespan=lifespan)
 
+# GZip compression (responses > 500 bytes)
+app.add_middleware(GZipMiddleware, minimum_size=500)
+
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["GET", "POST"],
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["*"],
 )
 
@@ -473,7 +478,9 @@ async def security_headers(request: Request, call_next):
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["X-XSS-Protection"] = "1; mode=block"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    response.headers["Permissions-Policy"] = (
+        "camera=(), microphone=(), geolocation=()"
+    )
     return response
 
 
@@ -501,20 +508,37 @@ async def log_requests(request: Request, call_next):
 async def rate_limit_middleware(request: Request, call_next):
     # Only rate limit AI-calling endpoints
     if request.url.path in ("/api/chat", "/api/ai", "/api/digest"):
-        client_ip = request.client.host if request.client else "unknown"
+        client_ip = _get_client_ip(request)
         if not _check_rate_limit(client_ip):
-            logger.warning("Rate limit exceeded for %s on %s", client_ip, request.url.path)
+            logger.warning(
+                "Rate limit exceeded for %s on %s", client_ip, request.url.path
+            )
             return JSONResponse(
                 status_code=429,
-                content={"detail": "Rate limit exceeded. Please try again later."},
+                content={
+                    "detail": "Rate limit exceeded. Please try again later."
+                },
             )
     return await call_next(request)
+
+
+def _get_client_ip(request: Request) -> str:
+    """Get client IP, checking trusted proxy headers first."""
+    forwarded_for = request.headers.get("X-Forwarded-For")
+    if forwarded_for:
+        return forwarded_for.split(",")[0].strip()
+    real_ip = request.headers.get("X-Real-IP")
+    if real_ip:
+        return real_ip.strip()
+    return request.client.host if request.client else "unknown"
 
 
 # ── Global exception handler ─────────────────────
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    logger.exception("Unhandled exception on %s %s", request.method, request.url.path)
+    logger.exception(
+        "Unhandled exception on %s %s", request.method, request.url.path
+    )
     return JSONResponse(
         status_code=500,
         content={"detail": "Internal server error"},
@@ -522,20 +546,14 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 
 # ══════════════════════════════════════════════════
-# ROUTES
+# ROUTES — Public
 # ══════════════════════════════════════════════════
 
 @app.get("/", response_class=HTMLResponse)
 async def serve_ui():
     """Serve the CaseCommand UI."""
-    base = Path(__file__).parent
-    for path in [
-        base / "static" / "index.html",
-        base / "index.html",
-        base / "casecommand-ui.html",
-    ]:
-        if path.exists():
-            return HTMLResponse(content=path.read_text())
+    if _cached_ui:
+        return HTMLResponse(content=_cached_ui)
     return HTMLResponse(
         "<h1>CaseCommand server running. Place index.html in project root or static/</h1>"
     )
@@ -543,37 +561,79 @@ async def serve_ui():
 
 @app.get("/api/health")
 async def health():
+    case_count = await db.get_case_count()
     return {
         "status": "ok",
         "api_key_configured": bool(API_KEY),
+        "auth_enabled": AUTH_ENABLED,
         "model": MODEL,
-        "cases": len(CASES),
+        "cases": case_count,
         "active_sessions": len(sessions),
         "timestamp": datetime.now().isoformat(),
     }
 
 
-@app.get("/api/cases")
+# ══════════════════════════════════════════════════
+# ROUTES — Protected (auth required if AUTH_TOKEN set)
+# ══════════════════════════════════════════════════
+
+@app.get("/api/cases", dependencies=[Depends(verify_auth)])
 async def list_cases():
-    return {"cases": CASES}
+    cases = await db.get_all_cases()
+    return {"cases": cases}
 
 
-@app.get("/api/cases/{case_id}")
+@app.get("/api/cases/{case_id}", dependencies=[Depends(verify_auth)])
 async def get_case_detail(case_id: str):
-    c = get_case(case_id)
+    c = await db.get_case(case_id)
     if not c:
         raise HTTPException(404, "Case not found")
     return c
 
 
-@app.post("/api/chat")
+@app.post("/api/cases", dependencies=[Depends(verify_auth)], status_code=201)
+async def create_case(req: CaseCreate):
+    """Create a new case."""
+    case_data = req.model_dump(exclude_none=True)
+    case_data["id"] = str(uuid.uuid4())[:8]
+    if "valuation" not in case_data:
+        case_data["valuation"] = {"lo": 0, "mid": 0, "hi": 0}
+    created = await db.create_case(case_data)
+    logger.info("Case created: %s (%s)", created["name"], created["id"])
+    return created
+
+
+@app.put("/api/cases/{case_id}", dependencies=[Depends(verify_auth)])
+async def update_case(case_id: str, req: CaseUpdate):
+    """Update an existing case."""
+    updates = req.model_dump(exclude_none=True)
+    if not updates:
+        raise HTTPException(400, "No fields to update")
+    updated = await db.update_case(case_id, updates)
+    if not updated:
+        raise HTTPException(404, "Case not found")
+    logger.info("Case updated: %s (%s)", updated["name"], updated["id"])
+    return updated
+
+
+@app.delete("/api/cases/{case_id}", dependencies=[Depends(verify_auth)])
+async def delete_case(case_id: str):
+    """Delete a case."""
+    deleted = await db.delete_case(case_id)
+    if not deleted:
+        raise HTTPException(404, "Case not found")
+    logger.info("Case deleted: %s", case_id)
+    return {"deleted": True, "id": case_id}
+
+
+@app.post("/api/chat", dependencies=[Depends(verify_auth)])
 async def commander_chat(req: ChatRequest):
     """CaseCommander multi-turn chat with session tracking."""
     sid = req.session_id or str(uuid.uuid4())
     session = get_session(sid)
 
-    case = get_case(req.current_case_id) if req.current_case_id else None
-    system = build_prompt(case)
+    case = (await db.get_case(req.current_case_id)) if req.current_case_id else None
+    system = await build_prompt(case)
 
     session["history"].append({"role": "user", "content": req.message})
 
@@ -593,7 +653,7 @@ async def commander_chat(req: ChatRequest):
         raise HTTPException(502, result["error"])
 
 
-@app.post("/api/ai")
+@app.post("/api/ai", dependencies=[Depends(verify_auth)])
 async def generic_ai(req: AIRequest):
     """Generic AI endpoint — any module sends system + message, gets response."""
     result = await call_claude(
@@ -611,21 +671,22 @@ async def generic_ai(req: AIRequest):
     raise HTTPException(502, result["error"])
 
 
-@app.get("/api/deadlines")
+@app.get("/api/deadlines", dependencies=[Depends(verify_auth)])
 async def deadlines():
+    cases = await db.get_all_cases()
     dl = [
         {"case": c["name"], "case_id": c["id"], **c["deadline"]}
-        for c in CASES
+        for c in cases
         if c.get("deadline")
     ]
     dl.sort(key=lambda d: (not d.get("urgent"), d.get("date", "")))
     return {"deadlines": dl}
 
 
-@app.get("/api/digest")
+@app.get("/api/digest", dependencies=[Depends(verify_auth)])
 async def daily_digest():
     result = await call_claude(
-        build_prompt(),
+        await build_prompt(),
         [
             {
                 "role": "user",
@@ -655,4 +716,5 @@ if __name__ == "__main__":
         host="0.0.0.0",
         port=port,
         reload=os.environ.get("RENDER") is None,
+        forwarded_allow_ips="*",
     )

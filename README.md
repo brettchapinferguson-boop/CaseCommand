@@ -10,6 +10,7 @@ AI-powered litigation operating system. One server, everything works.
 4. Render auto-detects `render.yaml` — just click **Create Web Service**
 5. In the Render dashboard → **Environment** → Add:
    - `ANTHROPIC_API_KEY` = your key from [console.anthropic.com](https://console.anthropic.com/settings/keys)
+   - `AUTH_TOKEN` = generate with `python -c "import secrets; print(secrets.token_urlsafe(32))"`
 6. Render deploys. You get a URL like `https://casecommand.onrender.com`
 
 That's it. Open the URL on any device — phone, laptop, tablet.
@@ -20,7 +21,7 @@ That's it. Open the URL on any device — phone, laptop, tablet.
 # 1. Install dependencies
 pip install -r requirements.txt
 
-# 2. Configure API key
+# 2. Configure
 cp .env.example .env
 # Edit .env → paste your Anthropic API key
 # Get one at: https://console.anthropic.com/settings/keys
@@ -38,7 +39,7 @@ Your API key lives in `.env` on the server and never touches the browser.
 
 ```bash
 docker build -t casecommand .
-docker run -p 3000:3000 --env-file .env casecommand
+docker run -p 3000:3000 -v casecommand-data:/app/data --env-file .env casecommand
 ```
 
 ## What You Get
@@ -60,6 +61,7 @@ docker run -p 3000:3000 --env-file .env casecommand
 ```
 casecommand/
 ├── server.py              # FastAPI server (all routes + AI calls)
+├── database.py            # SQLite persistence layer
 ├── index.html             # Bundled React frontend
 ├── .env.example           # Template config
 ├── .env                   # Your config (create from .env.example)
@@ -67,14 +69,16 @@ casecommand/
 ├── Dockerfile             # Container deployment
 ├── render.yaml            # Render.com deployment config
 ├── start.sh               # One-command launcher
-├── tests/                 # Test suite
+├── tests/                 # Test suite (62 tests)
 │   ├── conftest.py
 │   ├── test_health.py
 │   ├── test_cases.py
 │   ├── test_chat.py
 │   ├── test_deadlines.py
 │   ├── test_sessions.py
-│   └── test_rate_limit.py
+│   ├── test_rate_limit.py
+│   ├── test_auth.py
+│   └── test_database.py
 └── .github/workflows/
     └── ci.yml             # GitHub Actions CI
 ```
@@ -82,16 +86,35 @@ casecommand/
 ## API Endpoints
 
 ```
-GET  /              → Serves the UI
-GET  /api/health    → Server status
-GET  /api/cases     → All cases
-GET  /api/cases/:id → Single case
-POST /api/chat      → CaseCommander conversation
-POST /api/ai        → Generic AI call (any module)
-GET  /api/deadlines → All upcoming deadlines
-GET  /api/digest    → AI-generated daily digest
-GET  /docs          → Swagger API documentation
+GET    /              → Serves the UI
+GET    /api/health    → Server status (public)
+GET    /api/cases     → All cases
+GET    /api/cases/:id → Single case
+POST   /api/cases     → Create a case
+PUT    /api/cases/:id → Update a case
+DELETE /api/cases/:id → Delete a case
+POST   /api/chat      → CaseCommander conversation
+POST   /api/ai        → Generic AI call (any module)
+GET    /api/deadlines → All upcoming deadlines
+GET    /api/digest    → AI-generated daily digest
+GET    /docs          → Swagger API documentation
 ```
+
+## Authentication
+
+Set `AUTH_TOKEN` in `.env` to enable bearer token authentication:
+
+```bash
+# Generate a secure token
+python -c "import secrets; print(secrets.token_urlsafe(32))"
+```
+
+When enabled, all API endpoints (except `/api/health` and `/`) require:
+```
+Authorization: Bearer <your-token>
+```
+
+When `AUTH_TOKEN` is not set, authentication is disabled (open access).
 
 ## Configuration
 
@@ -100,9 +123,11 @@ All configuration is via environment variables. See `.env.example` for the full 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `ANTHROPIC_API_KEY` | Yes | — | Anthropic API key |
+| `AUTH_TOKEN` | No | — | Bearer token for API auth (disabled if empty) |
 | `CLAUDE_MODEL` | No | `claude-sonnet-4-5-20250514` | Claude model to use |
 | `PORT` | No | `3000` | Server port |
 | `LOG_LEVEL` | No | `INFO` | Logging level |
+| `DATABASE_PATH` | No | `./casecommand.db` | SQLite database file path |
 | `ALLOWED_ORIGINS` | No | `*` | CORS origins (comma-separated) |
 | `SESSION_TTL_SECONDS` | No | `3600` | Session expiry time |
 | `MAX_SESSIONS` | No | `1000` | Max concurrent sessions |
@@ -118,14 +143,21 @@ python -m pytest tests/ -v
 
 ## Production Features
 
+- **SQLite database** with auto-seeded demo data and full CRUD
+- **Bearer token authentication** (optional, timing-safe comparison)
 - **Structured logging** with configurable log level
 - **Security headers** (X-Content-Type-Options, X-Frame-Options, etc.)
 - **CORS** with configurable allowed origins
-- **Rate limiting** on AI endpoints (per-IP)
+- **GZip compression** on responses > 500 bytes
+- **Rate limiting** on AI endpoints (per-IP, proxy-aware)
 - **Input validation** with size limits on all user inputs
 - **Session management** with TTL-based cleanup and capacity limits
+- **Connection pooling** for Claude API (shared httpx client)
 - **Request tracking** via X-Request-ID header
-- **Graceful shutdown** with background task cleanup
+- **UI caching** — HTML loaded once at startup
+- **Trusted proxy support** — correct client IP behind Render/Nginx
+- **Docker health check** built in
+- **Graceful shutdown** with background task and HTTP client cleanup
 
 ## Troubleshooting
 
