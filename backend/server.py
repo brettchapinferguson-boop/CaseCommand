@@ -362,47 +362,42 @@ async def get_dashboard(request: Request):
 @app.get("/api/v2/health")
 @app.get("/api/health")
 async def health_check():
-    index_path = static_dir / "index.html"
     return {
         "status": "healthy",
-        "version": "2.0.0",
+        "version": "2.0.1",
         "service": "CaseCommand v2.0",
-        "static_dir": str(static_dir),
-        "static_dir_exists": static_dir.exists(),
-        "index_exists": index_path.exists(),
-        "cwd": os.getcwd(),
+        "frontend_loaded": _index_html_content is not None,
     }
 
 
 # ── Static Files (Frontend) ──────────────────────────────────
 
-# Try multiple possible locations for the static directory
-_possible_dirs = [
-    Path(__file__).parent / "static",
-    Path("/app/static"),
-    Path.cwd() / "static",
+# Try multiple possible locations for index.html
+_index_html_content = None
+_search_paths = [
+    Path(__file__).parent / "static" / "index.html",
+    Path("/app/static/index.html"),
+    Path.cwd() / "static" / "index.html",
 ]
-static_dir = None
-for _d in _possible_dirs:
-    if (_d / "index.html").exists():
-        static_dir = _d
+for _p in _search_paths:
+    if _p.exists():
+        _index_html_content = _p.read_text()
         break
-if static_dir is None:
-    static_dir = Path(__file__).parent / "static"
+
+static_dir = Path(__file__).parent / "static"
 
 
 @app.get("/")
 async def serve_root():
-    # Try multiple locations for index.html
-    for candidate in _possible_dirs:
-        index = candidate / "index.html"
-        if index.exists():
-            return FileResponse(str(index), media_type="text/html")
+    if _index_html_content:
+        from fastapi.responses import HTMLResponse
+        return HTMLResponse(content=_index_html_content)
     return JSONResponse({
         "status": "running",
         "version": "2.0.0",
         "docs": "/docs",
-        "debug_paths": [str(d) + " exists=" + str(d.exists()) for d in _possible_dirs],
+        "note": "Frontend not found. API is running.",
+        "searched": [str(p) + " exists=" + str(p.exists()) for p in _search_paths],
     })
 
 
