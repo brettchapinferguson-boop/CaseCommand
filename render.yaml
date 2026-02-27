@@ -1,13 +1,17 @@
 services:
   - type: web
-    name: casecommand
-    runtime: python
-    buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn server:app --host 0.0.0.0 --port $PORT
+    name: casecommand-v2
+    runtime: docker
+    dockerfilePath: ./Dockerfile
     envVars:
       - key: ANTHROPIC_API_KEY
         sync: false
-      - key: CLAUDE_MODEL
-        value: claude-sonnet-4-5-20250514
-      - key: PYTHON_VERSION
-        value: 3.11.0
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: PORT
+        value: 8000
+    healthCheckPath: /api/v2/health

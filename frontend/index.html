@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CaseCommand v2.0</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+--bg:#0a0e17;--bg2:#111827;--bg3:#1a2234;--bg4:#243049;
+--border:#2a3548;--border-h:#3b4f6b;
+--text:#e2e8f0;--text2:#94a3b8;--text3:#64748b;
+--brand:#3b82f6;--brand-h:#60a5fa;--brand-bg:rgba(59,130,246,0.1);
+--green:#10b981;--green-bg:rgba(16,185,129,0.1);
+--red:#ef4444;--red-bg:rgba(239,68,68,0.1);
+--orange:#f59e0b;--orange-bg:rgba(245,158,11,0.1);
+--purple:#8b5cf6;--purple-bg:rgba(139,92,246,0.1);
+--cyan:#06b6d4;--cyan-bg:rgba(6,182,212,0.1);
+}
+html,body,#root{height:100%;font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text)}
+::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:var(--bg2)}::-webkit-scrollbar-thumb{background:var(--bg4);border-radius:3px}
+.app{display:flex;height:100vh;overflow:hidden}
+.sidebar{width:260px;background:var(--bg2);border-right:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0}
+.main{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.topbar{height:56px;background:var(--bg2);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 24px;gap:16px;flex-shrink:0}
+.content{flex:1;overflow-y:auto;padding:24px}
+.logo{padding:20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px}
+.logo-icon{width:32px;height:32px;background:linear-gradient(135deg,var(--brand),var(--purple));border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;color:#fff}
+.logo-text{font-size:16px;font-weight:700;letter-spacing:-0.3px}
+.logo-ver{font-size:10px;color:var(--text3);margin-top:2px}
+.nav{padding:12px;flex:1;overflow-y:auto}
+.nav-section{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--text3);padding:12px 12px 6px;margin-top:8px}
+.nav-item{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:500;color:var(--text2);transition:all 0.15s}
+.nav-item:hover{background:var(--bg3);color:var(--text)}
+.nav-item.active{background:var(--brand-bg);color:var(--brand)}
+.nav-item i{width:18px;text-align:center;font-size:14px}
+.nav-badge{margin-left:auto;background:var(--red);color:#fff;font-size:10px;font-weight:600;padding:1px 6px;border-radius:10px;min-width:18px;text-align:center}
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:20px;transition:border-color 0.2s}
+.card:hover{border-color:var(--border-h)}
+.card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+.card-title{font-size:14px;font-weight:600}
+.stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px}
+.stat-card{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:20px}
+.stat-value{font-size:28px;font-weight:700;letter-spacing:-1px;margin-bottom:4px}
+.stat-label{font-size:12px;color:var(--text3);font-weight:500}
+.stat-icon{width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;margin-bottom:12px;font-size:16px}
+.btn{display:inline-flex;align-items:center;gap:8px;padding:8px 16px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;border:none;transition:all 0.15s;font-family:inherit}
+.btn-primary{background:var(--brand);color:#fff}.btn-primary:hover{background:var(--brand-h)}
+.btn-ghost{background:transparent;color:var(--text2);border:1px solid var(--border)}.btn-ghost:hover{background:var(--bg3);color:var(--text)}
+.btn-success{background:var(--green);color:#fff}
+.btn-danger{background:var(--red);color:#fff}
+.btn-sm{padding:5px 10px;font-size:12px}
+.tag{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:6px;font-size:11px;font-weight:600}
+.tag-blue{background:var(--brand-bg);color:var(--brand)}
+.tag-green{background:var(--green-bg);color:var(--green)}
+.tag-red{background:var(--red-bg);color:var(--red)}
+.tag-orange{background:var(--orange-bg);color:var(--orange)}
+.tag-purple{background:var(--purple-bg);color:var(--purple)}
+.tag-cyan{background:var(--cyan-bg);color:var(--cyan)}
+.case-row{display:flex;align-items:center;gap:16px;padding:14px 16px;background:var(--bg3);border:1px solid transparent;border-radius:10px;cursor:pointer;transition:all 0.15s;margin-bottom:8px}
+.case-row:hover{border-color:var(--brand);background:var(--brand-bg)}
+.upload-area{border:2px dashed var(--border);border-radius:12px;padding:40px;text-align:center;cursor:pointer;transition:all 0.2s}
+.upload-area:hover,.upload-area.dragover{border-color:var(--brand);background:var(--brand-bg)}
+.approval-banner{background:var(--orange-bg);border:1px solid rgba(245,158,11,0.3);border-radius:10px;padding:14px 18px;display:flex;align-items:center;gap:12px;margin-bottom:16px}
+.chat-container{display:flex;flex-direction:column;height:calc(100vh - 56px - 48px)}
+.chat-messages{flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:16px}
+.chat-msg{max-width:80%;padding:14px 18px;border-radius:16px;font-size:14px;line-height:1.6;white-space:pre-wrap}
+.chat-msg.user{background:var(--brand);color:#fff;align-self:flex-end;border-bottom-right-radius:4px}
+.chat-msg.assistant{background:var(--bg3);border:1px solid var(--border);align-self:flex-start;border-bottom-left-radius:4px}
+.chat-action{display:inline-flex;align-items:center;gap:4px;background:var(--green-bg);color:var(--green);padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;margin-top:8px}
+.chat-input-area{padding:16px 20px;border-top:1px solid var(--border);display:flex;gap:12px;background:var(--bg2)}
+.chat-input{flex:1;background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:12px 16px;color:var(--text);font-family:inherit;font-size:14px;resize:none;outline:none;min-height:44px;max-height:120px}
+.chat-input:focus{border-color:var(--brand)}
+.chat-input::placeholder{color:var(--text3)}
+.timeline-item{position:relative;padding-left:28px;padding-bottom:20px}
+.timeline-item::before{content:'';position:absolute;left:5px;top:20px;bottom:0;width:2px;background:var(--border)}
+.timeline-item:last-child::before{display:none}
+.timeline-dot{position:absolute;left:0;top:4px;width:12px;height:12px;border-radius:50%;background:var(--brand);border:2px solid var(--bg2)}
+.timeline-dot.deadline{background:var(--red)}
+.timeline-dot.hearing{background:var(--orange)}
+.timeline-dot.filing{background:var(--cyan)}
+.fact-item{display:flex;gap:10px;padding:10px 12px;background:var(--bg3);border-radius:8px;font-size:13px;align-items:flex-start;margin-bottom:6px}
+.spinner{display:inline-block;width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--brand);border-radius:50%;animation:spin 0.6s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.processing{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:60px}
+.processing .spinner{width:40px;height:40px;border-width:3px}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:20px}
+.tab{padding:10px 16px;font-size:13px;font-weight:500;color:var(--text3);cursor:pointer;border-bottom:2px solid transparent;transition:all 0.15s}
+.tab:hover{color:var(--text)}.tab.active{color:var(--brand);border-bottom-color:var(--brand)}
+.empty-state{text-align:center;padding:60px 20px;color:var(--text3)}
+.empty-state i{font-size:48px;margin-bottom:16px;opacity:0.3}
+.empty-state h3{font-size:16px;font-weight:600;color:var(--text2);margin-bottom:8px}
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2394a3b8' d='M6 8L1 3h10z'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center}
+@media(max-width:1024px){.stats-grid{grid-template-columns:repeat(2,1fr)}.grid-2{grid-template-columns:1fr}}
+@media(max-width:768px){.sidebar{display:none}.stats-grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const{useState,useEffect,useRef,useCallback}=React;
+
+/* ─── API ─────────────────────────────────────────── */
+const API=window.location.port==='3000'||window.location.port==='5173'?'http://localhost:8000':'';
+const UID='00000000-0000-0000-0000-000000000001';
+const apiFetch=async(path,opts={})=>{
+  const r=await fetch(API+path,{...opts,headers:{'Content-Type':'application/json','x-user-id':UID,...(opts.headers||{})}});
+  if(!r.ok)throw new Error('API '+r.status);return r.json();
+};
+const $={
+  dashboard:()=>apiFetch('/api/v2/dashboard'),
+  cases:(s)=>apiFetch('/api/v2/cases'+(s?'?status='+s:'')),
+  getCase:(id)=>apiFetch('/api/v2/cases/'+id),
+  upload:async(f,cid)=>{const fd=new FormData();fd.append('file',f);if(cid)fd.append('case_id',cid);
+    return(await fetch(API+'/api/v2/documents/upload',{method:'POST',headers:{'x-user-id':UID},body:fd})).json()},
+  process:(did,cid)=>apiFetch('/api/v2/documents/process',{method:'POST',body:JSON.stringify({document_id:did,case_id:cid||null})}),
+  chat:(msg,sid,cid)=>apiFetch('/api/v2/chat',{method:'POST',body:JSON.stringify({message:msg,session_id:sid,case_id:cid})}),
+  pendingActions:()=>apiFetch('/api/v2/actions/pending'),
+  approve:(id,ok,r)=>apiFetch('/api/v2/actions/approve',{method:'POST',body:JSON.stringify({action_id:id,approved:ok,rejection_reason:r})}),
+};
+
+const SC={active:'tag-blue',discovery:'tag-cyan',trial_prep:'tag-orange',trial:'tag-red',settled:'tag-green',closed:'tag-purple'};
+const TI={employment:'fa-briefcase',personal_injury:'fa-user-injured',civil_rights:'fa-scale-balanced',family:'fa-people-roof',business:'fa-building',civil:'fa-gavel'};
+const jp=(v)=>{if(!v)return[];if(Array.isArray(v))return v;try{return JSON.parse(v)}catch{return[]}};
+
+/* ─── APP ─────────────────────────────────────────── */
+function App(){
+  const[pg,setPg]=useState('dashboard');
+  const[cases,setC]=useState([]);
+  const[ac,setAc]=useState(null);
+  const[pa,setPa]=useState([]);
+  const[ld,setLd]=useState(true);
+  const load=async()=>{try{const[cr,ar]=await Promise.all([$.cases(),$.pendingActions()]);setC(cr.cases||[]);setPa(ar.actions||[])}catch(e){console.error(e)}setLd(false)};
+  useEffect(()=>{load()},[]);
+  const openCase=async(id)=>{try{setAc(await $.getCase(id));setPg('detail')}catch(e){console.error(e)}};
+  return(<div className="app">
+    <Sidebar pg={pg} setPg={setPg} cases={cases} pa={pa}/>
+    <div className="main">
+      <Topbar pg={pg} ac={ac}/>
+      <div className="content" style={pg==='chat'?{padding:0,display:'flex',flexDirection:'column'}:{}}>
+        {pg==='dashboard'&&<Dashboard cases={cases} pa={pa} openCase={openCase} load={load}/>}
+        {pg==='cases'&&<CaseList cases={cases} openCase={openCase}/>}
+        {pg==='upload'&&<Upload cases={cases} load={load} openCase={openCase}/>}
+        {pg==='chat'&&<Chat cases={cases} ac={ac} load={load}/>}
+        {pg==='detail'&&ac&&<Detail d={ac} refresh={()=>openCase(ac.case.id)} goChat={()=>setPg('chat')}/>}
+        {pg==='actions'&&<Actions pa={pa} load={load}/>}
+      </div>
+    </div>
+  </div>);
+}
+
+/* ─── SIDEBAR ─────────────────────────────────────── */
+function Sidebar({pg,setPg,cases,pa}){
+  const NI=({id,icon,label,badge,dim})=>
+    <div className={`nav-item ${pg===id?'active':''} ${dim?'':''}`} onClick={()=>!dim&&setPg(id)} style={dim?{opacity:0.45,cursor:'default'}:{}}>
+      <i className={`fa${icon.startsWith('b ')?'b':'s'} fa-${icon}`}></i>{label}
+      {badge>0&&<span className="nav-badge" style={id==='cases'?{background:'var(--brand)'}:{}}>{badge}</span>}
+      {dim&&<span className="tag tag-purple" style={{marginLeft:'auto',fontSize:9}}>Soon</span>}
+    </div>;
+  return(<div className="sidebar">
+    <div className="logo"><div className="logo-icon">CC</div><div><div className="logo-text">CaseCommand</div><div className="logo-ver">v2.0 — Agentic AI</div></div></div>
+    <div className="nav">
+      <div className="nav-section">Main</div>
+      <NI id="dashboard" icon="th-large" label="Dashboard"/>
+      <NI id="cases" icon="folder-open" label="Cases" badge={cases.length}/>
+      <NI id="upload" icon="cloud-upload-alt" label="Upload & Process"/>
+      <NI id="chat" icon="robot" label="CaseCommander"/>
+      <div className="nav-section">Workflow</div>
+      <NI id="actions" icon="check-circle" label="Pending Actions" badge={pa.length}/>
+      <NI id="_cal" icon="calendar" label="Calendar" dim/>
+      <NI id="_email" icon="envelope" label="Email" dim/>
+      <NI id="_wa" icon="b whatsapp" label="WhatsApp" dim/>
+      <div className="nav-section">Integrations</div>
+      <NI id="_clio" icon="link" label="Clio" dim/>
+    </div>
+  </div>);
+}
+
+/* ─── TOPBAR ──────────────────────────────────────── */
+function Topbar({pg,ac}){
+  const t={dashboard:'Dashboard',cases:'All Cases',upload:'Upload & Process Documents',chat:'CaseCommander AI',detail:ac?.case?.name||'Case',actions:'Pending Actions'};
+  return(<div className="topbar">
+    <h2 style={{fontSize:16,fontWeight:600}}>{t[pg]||'CaseCommand'}</h2>
+    <div style={{flex:1}}/>
+    <div style={{fontSize:12,color:'var(--text3)'}}><i className="fas fa-user-circle" style={{marginRight:6}}/>Brett Ferguson, Esq.</div>
+  </div>);
+}
+
+/* ─── DASHBOARD ───────────────────────────────────── */
+function Dashboard({cases,pa,openCase,load}){
+  const active=cases.filter(c=>['active','discovery','trial_prep','trial'].includes(c.status));
+  return(<div>
+    <div className="stats-grid">
+      {[[cases.length,'Total Cases','folder-open','brand'],[active.length,'Active','gavel','green'],[pa.length,'Pending Actions','clock','orange'],['v2','Agentic Mode','brain','purple']].map(([v,l,i,c],idx)=>
+        <div className="stat-card" key={idx}>
+          <div className="stat-icon" style={{background:`var(--${c}-bg)`,color:`var(--${c})`}}><i className={`fas fa-${i}`}/></div>
+          <div className="stat-value">{v}</div><div className="stat-label">{l}</div>
+        </div>)}
+    </div>
+    {pa.map(a=><div className="approval-banner" key={a.id}>
+      <i className="fas fa-exclamation-triangle" style={{color:'var(--orange)',fontSize:18}}/>
+      <div style={{flex:1,fontSize:13}}><strong>Pending:</strong> {a.action_description}</div>
+      <button className="btn btn-success btn-sm" onClick={async()=>{await $.approve(a.id,true);load()}}><i className="fas fa-check"/> Approve</button>
+      <button className="btn btn-danger btn-sm" onClick={async()=>{await $.approve(a.id,false,'Rejected');load()}}><i className="fas fa-times"/> Reject</button>
+    </div>)}
+    <div className="card">
+      <div className="card-header"><div className="card-title">Recent Cases</div>
+        <button className="btn btn-ghost btn-sm" onClick={load}><i className="fas fa-sync-alt"/> Refresh</button></div>
+      {cases.length===0?<div className="empty-state"><i className="fas fa-folder-plus"/><h3>No cases yet</h3><p>Upload a document to create your first case, or use CaseCommander AI.</p></div>
+      :cases.slice(0,8).map(c=><div className="case-row" key={c.id} onClick={()=>openCase(c.id)}>
+        <i className={`fas ${TI[c.case_type]||'fa-gavel'}`} style={{color:'var(--text3)',width:20}}/>
+        <div style={{flex:1}}><div style={{fontWeight:600,fontSize:14}}>{c.name}</div>
+          <div style={{fontSize:12,color:'var(--text3)',marginTop:2}}>{(c.summary||'').slice(0,100)}</div></div>
+        <span className={`tag ${SC[c.status]||'tag-blue'}`}>{c.status}</span>
+        <i className="fas fa-chevron-right" style={{color:'var(--text3)',fontSize:12}}/>
+      </div>)}
+    </div>
+  </div>);
+}
+
+/* ─── CASE LIST ───────────────────────────────────── */
+function CaseList({cases,openCase}){
+  const[f,setF]=useState('all');
+  const fc=f==='all'?cases:cases.filter(c=>c.status===f);
+  return(<div>
+    <div className="tabs">{['all','active','discovery','trial_prep','settled','closed'].map(t=>
+      <div key={t} className={`tab ${f===t?'active':''}`} onClick={()=>setF(t)}>
+        {t==='all'?'All':t.replace('_',' ').replace(/\b\w/g,l=>l.toUpperCase())}
+      </div>)}</div>
+    {fc.length===0?<div className="empty-state"><i className="fas fa-search"/><h3>No cases found</h3></div>
+    :fc.map(c=><div className="case-row" key={c.id} onClick={()=>openCase(c.id)}>
+      <i className={`fas ${TI[c.case_type]||'fa-gavel'}`} style={{color:'var(--text3)',width:20}}/>
+      <div style={{flex:1}}><div style={{fontWeight:600,fontSize:14}}>{c.name}</div>
+        <div style={{fontSize:12,color:'var(--text3)',marginTop:2}}>{(c.summary||'').slice(0,120)}</div></div>
+      <span className={`tag ${SC[c.status]||'tag-blue'}`}>{c.status}</span>
+      <i className="fas fa-chevron-right" style={{color:'var(--text3)',fontSize:12}}/>
+    </div>)}
+  </div>);
+}
+
+/* ─── UPLOAD ──────────────────────────────────────── */
+function Upload({cases,load,openCase}){
+  const[drag,setDrag]=useState(false);
+  const[doc,setDoc]=useState(null);
+  const[busy,setBusy]=useState(false);
+  const[step,setStep]=useState('');
+  const[target,setTarget]=useState('new');
+  const[result,setResult]=useState(null);
+  const ref=useRef();
+
+  const handle=async(file)=>{
+    if(!file)return;setBusy(true);setStep('Uploading document...');setResult(null);
+    try{const r=await $.upload(file);setDoc(r.document);setStep('');setBusy(false)}catch(e){setStep('Upload failed');setBusy(false)}
+  };
+  const process=async()=>{
+    if(!doc)return;setBusy(true);setResult(null);
+    const steps=['Extracting text...','Classifying document type...','Analyzing facts & legal issues...','Building timeline...','Creating case profile...'];
+    let i=0;const iv=setInterval(()=>{if(i<steps.length)setStep(steps[i++])},2200);
+    try{const r=await $.process(doc.id,target==='new'?null:target);clearInterval(iv);setResult(r);setBusy(false);setStep('');load()}
+    catch(e){clearInterval(iv);setStep('Failed: '+e.message);setBusy(false)}
+  };
+
+  return(<div>
+    {result&&<div className="card" style={{marginBottom:20,borderColor:'var(--green)',background:'var(--green-bg)'}}>
+      <h3 style={{color:'var(--green)',marginBottom:8}}><i className="fas fa-check-circle" style={{marginRight:8}}/>
+        {result.action==='new_case_created'?'New Case Created!':'Document Added!'}</h3>
+      <p style={{marginBottom:12,fontSize:14}}>{result.message}</p>
+      <div style={{display:'flex',gap:8,marginBottom:12}}>
+        <span className="tag tag-blue">{result.facts_extracted||result.new_facts||0} facts</span>
+        <span className="tag tag-cyan">{result.timeline_events||result.new_timeline_events||0} timeline events</span>
+      </div>
+      {result.case&&<button className="btn btn-primary" onClick={()=>openCase(result.case.id)}><i className="fas fa-arrow-right"/> Open Case</button>}
+    </div>}
+
+    {!doc&&!busy&&<div className={`upload-area ${drag?'dragover':''}`}
+      onDrop={e=>{e.preventDefault();setDrag(false);handle(e.dataTransfer.files[0])}}
+      onDragOver={e=>{e.preventDefault();setDrag(true)}} onDragLeave={()=>setDrag(false)}
+      onClick={()=>ref.current?.click()}>
+      <i className="fas fa-cloud-upload-alt" style={{fontSize:36,color:'var(--text3)',marginBottom:12,display:'block'}}/>
+      <p style={{color:'var(--text2)',fontSize:14}}><strong>Drop a file here</strong> or click to browse</p>
+      <p style={{fontSize:12,marginTop:8,color:'var(--text3)'}}>PDF, DOCX, TXT — Up to 50MB</p>
+      <input ref={ref} type="file" accept=".pdf,.docx,.txt" hidden onChange={e=>handle(e.target.files[0])}/>
+    </div>}
+
+    {doc&&!busy&&!result&&<div className="card">
+      <div className="card-header"><div>
+        <div className="card-title"><i className="fas fa-file-pdf" style={{marginRight:8,color:'var(--red)'}}/>{doc.filename}</div>
+        <div style={{fontSize:12,color:'var(--text3)',marginTop:4}}>{doc.page_count} pages — {(doc.text_length||0).toLocaleString()} chars extracted</div>
+      </div></div>
+      <div style={{marginBottom:16}}>
+        <label style={{display:'block',fontSize:13,fontWeight:600,marginBottom:8}}>Process this document as:</label>
+        <select value={target} onChange={e=>setTarget(e.target.value)}
+          style={{width:'100%',padding:'10px 14px',background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:8,color:'var(--text)',fontSize:14,fontFamily:'inherit',cursor:'pointer'}}>
+          <option value="new">✨ Create New Case</option>
+          {cases.map(c=><option key={c.id} value={c.id}>📁 Add to: {c.name}</option>)}
+        </select>
+      </div>
+      <div style={{display:'flex',gap:12}}>
+        <button className="btn btn-primary" onClick={process}><i className="fas fa-magic"/> Process with AI</button>
+        <button className="btn btn-ghost" onClick={()=>{setDoc(null);setResult(null)}}><i className="fas fa-times"/> Cancel</button>
+      </div>
+    </div>}
+
+    {busy&&<div className="processing">
+      <div className="spinner" style={{width:40,height:40,borderWidth:3}}/>
+      <div style={{fontSize:14,color:'var(--text2)'}}>Processing document with AI...</div>
+      <div style={{fontSize:13,color:'var(--brand)',fontWeight:500}}>{step}</div>
+    </div>}
+  </div>);
+}
+
+/* ─── CHAT ────────────────────────────────────────── */
+function Chat({cases,ac,load}){
+  const[msgs,setMsgs]=useState([{role:'assistant',content:"I'm CaseCommand, your AI litigation assistant. I can create cases from uploaded documents, generate legal documents, propose calendar events, draft emails, and more.\n\nTry: \"I just uploaded a trial brief, create a new case\" or \"What cases do I have?\""}]);
+  const[input,setInput]=useState('');
+  const[sending,setSending]=useState(false);
+  const[sid]=useState(()=>'s-'+Math.random().toString(36).slice(2));
+  const[caseId,setCaseId]=useState(ac?.case?.id||null);
+  const bottom=useRef();
+
+  useEffect(()=>{bottom.current?.scrollIntoView({behavior:'smooth'})},[msgs]);
+
+  const send=async()=>{
+    if(!input.trim()||sending)return;
+    const msg=input.trim();setInput('');setSending(true);
+    setMsgs(p=>[...p,{role:'user',content:msg}]);
+    try{
+      const r=await $.chat(msg,sid,caseId);
+      const m={role:'assistant',content:r.response,actions:r.actions||[]};
+      setMsgs(p=>[...p,m]);
+      if(r.actions?.some(a=>a.tool==='create_case_from_document'||a.tool==='add_document_to_case'))load();
+    }catch(e){setMsgs(p=>[...p,{role:'assistant',content:'Error: '+e.message}])}
+    setSending(false);
+  };
+
+  const onKey=e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send()}};
+
+  return(<div className="chat-container">
+    {caseId&&<div style={{padding:'8px 20px',background:'var(--bg3)',borderBottom:'1px solid var(--border)',fontSize:12,color:'var(--text2)'}}>
+      <i className="fas fa-folder-open" style={{marginRight:6}}/>Active case: <strong>{ac?.case?.name||caseId}</strong>
+      <span style={{marginLeft:8,cursor:'pointer',color:'var(--brand)'}} onClick={()=>setCaseId(null)}>× clear</span>
+    </div>}
+    <div className="chat-messages">
+      {msgs.map((m,i)=><div key={i} className={`chat-msg ${m.role}`}>
+        {m.content}
+        {m.actions?.length>0&&<div style={{marginTop:8}}>{m.actions.map((a,j)=>
+          <div key={j} className="chat-action"><i className="fas fa-bolt"/> {a.tool}: {a.result?.message||'done'}</div>
+        )}</div>}
+      </div>)}
+      {sending&&<div className="chat-msg assistant"><span className="spinner" style={{width:16,height:16,borderWidth:2}}/> Thinking...</div>}
+      <div ref={bottom}/>
+    </div>
+    <div className="chat-input-area">
+      <select value={caseId||''} onChange={e=>setCaseId(e.target.value||null)}
+        style={{width:180,padding:'8px 10px',background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:8,color:'var(--text)',fontSize:12,fontFamily:'inherit'}}>
+        <option value="">No case selected</option>
+        {cases.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+      </select>
+      <textarea className="chat-input" rows={1} value={input} onChange={e=>setInput(e.target.value)}
+        onKeyDown={onKey} placeholder="Tell CaseCommand what to do..." disabled={sending}/>
+      <button className="btn btn-primary" onClick={send} disabled={sending}>
+        <i className={sending?'fas fa-spinner fa-spin':'fas fa-paper-plane'}/></button>
+    </div>
+  </div>);
+}
+
+/* ─── CASE DETAIL ─────────────────────────────────── */
+function Detail({d,refresh,goChat}){
+  const[tab,setTab]=useState('overview');
+  const c=d.case,docs=d.documents||[],facts=d.facts||[],tl=d.timeline||[],st=d.stats||{};
+  const coa=jp(c.causes_of_action),ki=jp(c.key_issues),str=jp(c.strengths),wk=jp(c.weaknesses),pl=jp(c.plaintiff),df=jp(c.defendant);
+
+  return(<div>
+    <div className="card" style={{marginBottom:20}}>
+      <div style={{display:'flex',alignItems:'flex-start',gap:16}}>
+        <div style={{width:48,height:48,borderRadius:12,background:'var(--brand-bg)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+          <i className={`fas ${TI[c.case_type]||'fa-gavel'}`} style={{color:'var(--brand)',fontSize:20}}/>
+        </div>
+        <div style={{flex:1,minWidth:0}}>
+          <h2 style={{fontSize:20,fontWeight:700,marginBottom:6}}>{c.name}</h2>
+          <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:8}}>
+            <span className={`tag ${SC[c.status]||'tag-blue'}`}>{c.status}</span>
+            {c.case_type&&<span className="tag tag-purple">{c.case_type.replace('_',' ')}</span>}
+            {c.case_number&&<span className="tag tag-cyan">{c.case_number}</span>}
+          </div>
+          {c.summary&&<p style={{fontSize:13,color:'var(--text2)',lineHeight:1.6}}>{c.summary}</p>}
+        </div>
+        <button className="btn btn-primary btn-sm" onClick={goChat}><i className="fas fa-robot"/> Chat about case</button>
+      </div>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12,marginTop:16}}>
+        {[[st.total_documents||0,'Documents'],[st.total_facts||0,'Facts'],[st.timeline_events||0,'Timeline'],[coa.length,'Claims']].map(([v,l],i)=>
+          <div key={i} style={{textAlign:'center',padding:12,background:'var(--bg3)',borderRadius:8}}>
+            <div style={{fontSize:20,fontWeight:700}}>{v}</div><div style={{fontSize:11,color:'var(--text3)'}}>{l}</div>
+          </div>)}
+      </div>
+    </div>
+
+    <div className="tabs">{['overview','facts','timeline','documents'].map(t=>
+      <div key={t} className={`tab ${tab===t?'active':''}`} onClick={()=>setTab(t)}>
+        {t.charAt(0).toUpperCase()+t.slice(1)}</div>)}</div>
+
+    {tab==='overview'&&<div className="grid-2">
+      <div className="card">
+        <div className="card-title" style={{marginBottom:12}}>Parties</div>
+        {pl.length>0&&<div style={{marginBottom:12}}>
+          <div style={{fontSize:11,fontWeight:600,color:'var(--text3)',marginBottom:4}}>PLAINTIFF</div>
+          {pl.map((p,i)=><div key={i} style={{fontSize:13,marginBottom:2}}><i className="fas fa-user" style={{marginRight:6,fontSize:11,color:'var(--brand)'}}/>{p.name||p}</div>)}
+        </div>}
+        {df.length>0&&<div>
+          <div style={{fontSize:11,fontWeight:600,color:'var(--text3)',marginBottom:4}}>DEFENDANT</div>
+          {df.map((p,i)=><div key={i} style={{fontSize:13,marginBottom:2}}><i className="fas fa-user" style={{marginRight:6,fontSize:11,color:'var(--red)'}}/>{p.name||p}</div>)}
+        </div>}
+        {c.court&&<div style={{marginTop:12,fontSize:12,color:'var(--text3)'}}><i className="fas fa-landmark" style={{marginRight:6}}/>{c.court}</div>}
+        {c.judge&&<div style={{fontSize:12,color:'var(--text3)',marginTop:4}}><i className="fas fa-gavel" style={{marginRight:6}}/>Judge {c.judge}</div>}
+      </div>
+      <div className="card">
+        <div className="card-title" style={{marginBottom:12}}>Causes of Action</div>
+        {coa.length===0?<div style={{fontSize:13,color:'var(--text3)'}}>None extracted yet</div>
+        :coa.map((a,i)=><div key={i} style={{marginBottom:10,padding:10,background:'var(--bg3)',borderRadius:8}}>
+          <div style={{fontWeight:600,fontSize:13}}>{a.name||a}</div>
+          {a.statute&&<div style={{fontSize:11,color:'var(--text3)',marginTop:2}}>{a.statute}</div>}
+          {a.strength&&<span className={`tag ${a.strength==='strong'?'tag-green':a.strength==='moderate'?'tag-orange':'tag-red'}`} style={{marginTop:4}}>{a.strength}</span>}
+        </div>)}
+      </div>
+      {ki.length>0&&<div className="card">
+        <div className="card-title" style={{marginBottom:12}}>Key Issues</div>
+        {ki.map((k,i)=><div key={i} style={{fontSize:13,marginBottom:6,paddingLeft:12,borderLeft:'3px solid var(--brand)'}}>{k}</div>)}
+      </div>}
+      <div className="card">
+        <div className="card-title" style={{marginBottom:12}}>Strengths & Weaknesses</div>
+        {str.length>0&&<div style={{marginBottom:12}}>{str.map((s,i)=>
+          <div key={i} style={{fontSize:13,marginBottom:4}}><i className="fas fa-plus-circle" style={{color:'var(--green)',marginRight:6}}/>{s}</div>)}</div>}
+        {wk.length>0&&<div>{wk.map((w,i)=>
+          <div key={i} style={{fontSize:13,marginBottom:4}}><i className="fas fa-exclamation-circle" style={{color:'var(--red)',marginRight:6}}/>{w}</div>)}</div>}
+      </div>
+    </div>}
+
+    {tab==='facts'&&<div>
+      {facts.length===0?<div className="empty-state"><i className="fas fa-clipboard-list"/><h3>No facts extracted</h3></div>
+      :facts.map((f,i)=><div className="fact-item" key={i}>
+        <span className={`tag ${f.category==='liability'?'tag-blue':f.category==='damages'?'tag-green':f.category==='credibility'?'tag-orange':'tag-purple'}`} style={{flexShrink:0,fontSize:10}}>
+          {f.category||'general'}</span>
+        <div style={{flex:1}}>
+          <div style={{lineHeight:1.5}}>{f.fact_text}</div>
+          <div style={{fontSize:11,color:'var(--text3)',marginTop:4}}>
+            {f.fact_type&&<span className="tag tag-cyan" style={{marginRight:4,fontSize:9}}>{f.fact_type}</span>}
+            {f.source_page&&<span>p.{f.source_page}</span>}
+            {f.confidence&&<span style={{marginLeft:8}}>{Math.round(f.confidence*100)}% confidence</span>}
+          </div>
+        </div>
+      </div>)}
+    </div>}
+
+    {tab==='timeline'&&<div>
+      {tl.length===0?<div className="empty-state"><i className="fas fa-clock"/><h3>No timeline events</h3></div>
+      :tl.map((e,i)=><div className="timeline-item" key={i}>
+        <div className={`timeline-dot ${e.event_type==='deadline'?'deadline':e.event_type==='hearing'?'hearing':e.event_type==='filing'?'filing':''}`}/>
+        <div style={{fontSize:11,color:'var(--text3)',fontWeight:600}}>{e.event_date}</div>
+        <div style={{fontSize:13,fontWeight:600,marginTop:2}}>{e.title}</div>
+        {e.description&&<div style={{fontSize:12,color:'var(--text2)',marginTop:2}}>{e.description}</div>}
+        {e.event_type&&<span className={`tag ${e.event_type==='deadline'?'tag-red':e.event_type==='hearing'?'tag-orange':'tag-blue'}`} style={{marginTop:4,fontSize:10}}>{e.event_type}</span>}
+      </div>)}
+    </div>}
+
+    {tab==='documents'&&<div>
+      {docs.length===0?<div className="empty-state"><i className="fas fa-file"/><h3>No documents</h3></div>
+      :docs.map((d,i)=><div className="case-row" key={i} style={{cursor:'default'}}>
+        <i className="fas fa-file-pdf" style={{color:'var(--red)',fontSize:18}}/>
+        <div style={{flex:1}}>
+          <div style={{fontWeight:600,fontSize:14}}>{d.filename}</div>
+          <div style={{fontSize:12,color:'var(--text3)',marginTop:2}}>{d.summary?.slice(0,120)||'No summary'}</div>
+        </div>
+        {d.doc_type&&<span className="tag tag-blue">{d.doc_type}</span>}
+        <span className={`tag ${d.processing_status==='completed'?'tag-green':'tag-orange'}`}>{d.processing_status}</span>
+      </div>)}
+    </div>}
+  </div>);
+}
+
+/* ─── ACTIONS ─────────────────────────────────────── */
+function Actions({pa,load}){
+  if(pa.length===0)return<div className="empty-state"><i className="fas fa-check-circle"/><h3>No pending actions</h3><p>All clear! Actions proposed by CaseCommander will appear here for your approval.</p></div>;
+  return(<div>{pa.map(a=>{
+    const pl=a.action_payload?JSON.parse(a.action_payload):{};
+    return<div className="card" key={a.id} style={{marginBottom:12}}>
+      <div style={{display:'flex',alignItems:'flex-start',gap:12}}>
+        <div style={{width:36,height:36,borderRadius:10,background:a.action_type==='email_sent'?'var(--cyan-bg)':'var(--orange-bg)',
+          display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+          <i className={`fas ${a.action_type==='email_sent'?'fa-envelope':'fa-calendar'}`}
+            style={{color:a.action_type==='email_sent'?'var(--cyan)':'var(--orange)'}}/>
+        </div>
+        <div style={{flex:1}}>
+          <div style={{fontWeight:600,fontSize:14,marginBottom:4}}>{a.action_description}</div>
+          {a.action_type==='email_sent'&&pl.to&&<div style={{fontSize:12,color:'var(--text3)',marginBottom:2}}>To: {pl.to}</div>}
+          {a.action_type==='email_sent'&&pl.subject&&<div style={{fontSize:12,color:'var(--text3)',marginBottom:2}}>Subject: {pl.subject}</div>}
+          {a.action_type==='email_sent'&&pl.body&&<div style={{fontSize:12,color:'var(--text2)',background:'var(--bg3)',padding:10,borderRadius:8,marginTop:8,whiteSpace:'pre-wrap',maxHeight:200,overflow:'auto'}}>{pl.body}</div>}
+          {a.action_type==='calendar_created'&&<div style={{fontSize:12,color:'var(--text3)'}}>
+            {pl.date} {pl.time&&'at '+pl.time} {pl.location&&'— '+pl.location}
+          </div>}
+        </div>
+        <div style={{display:'flex',gap:8}}>
+          <button className="btn btn-success btn-sm" onClick={async()=>{await $.approve(a.id,true);load()}}><i className="fas fa-check"/> Approve</button>
+          <button className="btn btn-danger btn-sm" onClick={async()=>{await $.approve(a.id,false,'Rejected');load()}}><i className="fas fa-times"/> Reject</button>
+        </div>
+      </div>
+    </div>})}</div>);
+}
+
+ReactDOM.render(<App/>,document.getElementById('root'));
+</script>
+</body>
+</html>
