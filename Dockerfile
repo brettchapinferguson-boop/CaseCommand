@@ -18,13 +18,21 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy backend code
 COPY backend/ .
 
-# Copy frontend into static directory
+# Copy frontend into static directory (multiple fallback locations)
 RUN mkdir -p static
 COPY frontend/index.html static/index.html
-RUN ls -la static/ && echo "=== index.html found ===" && head -1 static/index.html
+
+# Also copy to /app root just in case
+COPY frontend/index.html /app/index.html
+
+# Verify the file exists
+RUN echo "=== Verifying frontend files ===" && \
+    ls -la static/index.html && \
+    wc -c static/index.html && \
+    echo "=== Frontend ready ==="
 
 # Expose port
 EXPOSE 8000
 
-# Run server - use shell form so $PORT env var is expanded at runtime
+# Run server
 CMD uvicorn server:app --host 0.0.0.0 --port ${PORT:-8000}
