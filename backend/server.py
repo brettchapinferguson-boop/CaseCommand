@@ -373,11 +373,14 @@ async def health_check():
 # ── Static Files (Frontend) ──────────────────────────────────
 
 # Try multiple possible locations for index.html
+# Render runs from /opt/render/project/src/ (repo root), not Docker /app/
+_repo_root = Path(__file__).parent.parent  # backend/ -> repo root
 _index_html_content = None
 _search_paths = [
-    Path(__file__).parent / "static" / "index.html",
-    Path("/app/static/index.html"),
-    Path.cwd() / "static" / "index.html",
+    _repo_root / "frontend" / "index.html",           # repo layout (Render native)
+    Path(__file__).parent / "static" / "index.html",   # Docker layout
+    Path("/app/static/index.html"),                     # Docker explicit
+    Path.cwd() / "static" / "index.html",              # CWD fallback
 ]
 for _p in _search_paths:
     if _p.exists():
