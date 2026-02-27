@@ -113,6 +113,13 @@ def is_document_request(message: str) -> bool:
     return has_action and has_doc_type
 
 
+def _title_from_message(message: str) -> str:
+    """Derive a safe document filename from the user's request."""
+    skip = {"a", "an", "the", "for", "of", "in", "to", "me", "us", "please", "can", "you"}
+    words = [w.capitalize() for w in message.split() if w.lower() not in skip]
+    return "_".join(words[:6]) or "Legal_Document"
+
+
 def extract_title_and_body(text: str, fallback: str = "Legal_Document") -> tuple[str, str]:
     """Return (title, body) — strips the DOCUMENT_TITLE line wherever it appears."""
     lines = text.strip().split("\n")
@@ -260,7 +267,8 @@ def chat(req: ChatRequest, _: None = Depends(verify_token)):
     else:
         cases_context = "No active cases."
 
-    doc_hint = DOCUMENT_FORMAT_INSTRUCTIONS if is_document_request(req.message) else ""
+    is_doc = is_document_request(req.message)
+    doc_hint = DOCUMENT_FORMAT_INSTRUCTIONS if is_doc else ""
 
     system_prompt = (
         "You are CaseCommand AI, an expert legal assistant. "
@@ -275,10 +283,11 @@ def chat(req: ChatRequest, _: None = Depends(verify_token)):
 
     result = {"reply": text, "model": response["model"], "document": None}
 
-    # Generate .docx when Claude returns a DOCUMENT_TITLE header (anywhere in response)
-    if "DOCUMENT_TITLE:" in text:
+    # Generate .docx for any document request OR if Claude included the title marker
+    if is_doc or "DOCUMENT_TITLE:" in text:
         try:
-            title, body = extract_title_and_body(text, fallback="Legal_Document")
+            fallback = _title_from_message(req.message)
+            title, body = extract_title_and_body(text, fallback=fallback)
             filename = build_docx(title, body)
             result["document"] = {
                 "filename": filename,
