@@ -15,9 +15,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Remove build tools to shrink image
-RUN apt-get purge -y --auto-remove build-essential
-
 # Copy backend code
 COPY backend/ .
 
