@@ -21,6 +21,7 @@ COPY backend/ .
 # Copy frontend into static directory
 RUN mkdir -p static
 COPY frontend/index.html static/index.html
+RUN ls -la static/ && echo "=== index.html found ===" && head -1 static/index.html
 
 # Expose port
 EXPOSE 8000
