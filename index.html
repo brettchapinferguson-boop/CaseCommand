@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>CaseCommand</title>
+  <title>CaseCommand by LawClaw</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -21,6 +21,7 @@
       --user-bg:   #1c3a6e;
       --ai-bg:     #1c2333;
       --danger:    #da3633;
+      --gold:      #d29922;
       --radius:    8px;
     }
 
@@ -32,11 +33,23 @@
     header {
       display: flex; align-items: center; justify-content: space-between;
       padding: 0 20px; height: 52px; background: var(--surface);
-      border-bottom: 1px solid var(--border); flex-shrink: 0;
+      border-bottom: 1px solid var(--border); flex-shrink: 0; gap: 20px;
     }
-    .logo { font-size: 18px; font-weight: 700; letter-spacing: -0.3px; color: var(--text); }
-    .logo span { color: var(--accent); }
-    .header-meta { font-size: 12px; color: var(--muted); }
+    .logo { font-size: 18px; font-weight: 700; letter-spacing: -0.3px; color: var(--text); white-space: nowrap; }
+    .logo span.cmd { color: var(--accent); }
+    .logo span.by  { font-size: 11px; font-weight: 400; color: var(--muted); margin-left: 6px; vertical-align: middle; }
+    .logo span.lawclaw { font-size: 13px; font-weight: 600; color: var(--gold); }
+    .header-meta { font-size: 12px; color: var(--muted); white-space: nowrap; }
+
+    /* ── Top nav tabs ── */
+    .nav-tabs { display: flex; gap: 4px; }
+    .nav-tab {
+      padding: 6px 14px; border-radius: var(--radius); border: none;
+      background: transparent; color: var(--muted); cursor: pointer;
+      font-size: 13px; font-weight: 500; transition: all .15s; white-space: nowrap;
+    }
+    .nav-tab:hover { background: var(--surface2); color: var(--text); }
+    .nav-tab.active { background: var(--accent); color: #fff; }
 
     .workspace { display: flex; flex: 1; overflow: hidden; }
 
@@ -57,6 +70,7 @@
     .btn-full { width: 100%; justify-content: center; }
     .btn-green { background: var(--green); color: #fff; }
     .btn-danger { background: var(--danger); color: #fff; }
+    .btn-gold  { background: #9e6a03; color: #fff; }
 
     .cases-list { flex: 1; overflow-y: auto; padding: 4px 8px; }
     .case-item {
@@ -74,16 +88,18 @@
     .new-case-form.hidden { display: none; }
     .form-row { margin-bottom: 8px; }
     .form-row label { display: block; font-size: 11px; color: var(--muted); margin-bottom: 3px; font-weight: 500; }
-    .form-row input, .form-row select {
+    .form-row input, .form-row select, .form-row textarea {
       width: 100%; padding: 6px 8px; background: var(--bg); border: 1px solid var(--border);
-      border-radius: var(--radius); color: var(--text); font-size: 13px;
+      border-radius: var(--radius); color: var(--text); font-size: 13px; font-family: inherit;
     }
-    .form-row input:focus, .form-row select:focus { outline: none; border-color: var(--accent); }
+    .form-row input:focus, .form-row select:focus, .form-row textarea:focus { outline: none; border-color: var(--accent); }
     .form-actions { display: flex; gap: 6px; }
 
-    /* ── Main chat area ── */
-    .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+    /* ── Views ── */
+    .view-panel { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+    .view-panel.hidden { display: none; }
 
+    /* ── Chat ── */
     .chat-header { padding: 12px 20px; border-bottom: 1px solid var(--border); background: var(--surface); display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
     .chat-title { font-weight: 600; font-size: 15px; }
     .chat-subtitle { font-size: 12px; color: var(--muted); margin-top: 1px; }
@@ -180,6 +196,73 @@
     }
     .chip:hover { border-color: var(--accent); color: var(--accent); }
 
+    /* ── Integrations view ── */
+    .view-inner { flex: 1; overflow-y: auto; padding: 24px; }
+    .view-hdr { padding: 16px 24px; border-bottom: 1px solid var(--border); background: var(--surface); flex-shrink: 0; }
+    .view-hdr-title { font-size: 18px; font-weight: 700; }
+    .view-hdr-sub { font-size: 13px; color: var(--muted); margin-top: 3px; }
+
+    .int-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; margin-bottom: 28px; }
+    .int-category-title { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .6px; margin-bottom: 10px; margin-top: 4px; }
+    .int-card {
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 14px 16px; display: flex; align-items: center; gap: 12px;
+      transition: border-color .15s;
+    }
+    .int-card:hover { border-color: var(--accent); }
+    .int-icon { font-size: 24px; flex-shrink: 0; width: 36px; text-align: center; }
+    .int-info { flex: 1; min-width: 0; }
+    .int-name { font-weight: 600; font-size: 13px; }
+    .int-desc { font-size: 11px; color: var(--muted); margin-top: 2px; }
+    .int-status { font-size: 11px; margin-top: 4px; }
+    .int-status.connected { color: #3fb950; }
+    .int-status.pending   { color: var(--gold); }
+    .int-connect-btn {
+      padding: 5px 12px; border-radius: 6px; font-size: 12px; font-weight: 500;
+      border: 1px solid var(--border); background: transparent; color: var(--muted);
+      cursor: pointer; white-space: nowrap; flex-shrink: 0; transition: all .15s;
+    }
+    .int-connect-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .int-connect-btn.connected { border-color: var(--green); color: #3fb950; cursor: default; }
+
+    .workflow-card {
+      background: var(--surface); border: 1px solid var(--gold); border-radius: var(--radius);
+      padding: 18px 20px; margin-top: 8px;
+    }
+    .workflow-title { font-weight: 700; color: var(--gold); margin-bottom: 12px; font-size: 14px; }
+    .workflow-steps { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+    .wf-step {
+      background: var(--surface2); border: 1px solid var(--border); border-radius: 6px;
+      padding: 6px 12px; font-size: 12px; display: flex; align-items: center; gap: 6px;
+    }
+    .wf-arrow { color: var(--muted); font-size: 16px; }
+
+    /* ── TrialOutline Pro view ── */
+    .outline-layout { display: flex; flex: 1; overflow: hidden; gap: 0; }
+    .outline-form-panel {
+      width: 340px; flex-shrink: 0; background: var(--surface);
+      border-right: 1px solid var(--border); display: flex; flex-direction: column;
+      overflow-y: auto; padding: 20px;
+    }
+    .outline-form-panel h3 { font-size: 15px; font-weight: 700; margin-bottom: 16px; color: var(--text); }
+    .outline-result-panel { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+    .outline-result-inner { flex: 1; overflow-y: auto; padding: 24px; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+    .outline-placeholder { text-align: center; color: var(--muted); max-width: 420px; }
+    .outline-placeholder h3 { font-size: 20px; margin-bottom: 12px; color: var(--text); }
+    .outline-placeholder p { font-size: 13px; line-height: 1.6; }
+    .outline-launch-card {
+      background: var(--surface); border: 1px solid var(--green); border-radius: var(--radius);
+      padding: 20px 24px; text-align: center; max-width: 420px; width: 100%;
+    }
+    .outline-launch-card h3 { color: #3fb950; font-size: 16px; margin-bottom: 8px; }
+    .outline-launch-card p { font-size: 12px; color: var(--muted); margin-bottom: 16px; }
+    .launch-btn {
+      display: inline-block; padding: 10px 24px; background: var(--green); color: #fff;
+      border-radius: var(--radius); font-weight: 700; font-size: 14px; text-decoration: none;
+      cursor: pointer; border: none;
+    }
+    .launch-btn:hover { opacity: .85; }
+
     /* toast */
     #toast {
       position: fixed; bottom: 24px; right: 24px; padding: 10px 16px;
@@ -203,25 +286,32 @@
 
   <!-- Header -->
   <header>
-    <div class="logo">Case<span>Command</span></div>
+    <div class="logo">
+      Case<span class="cmd">Command</span><span class="by">by</span><span class="lawclaw">LawClaw</span>
+    </div>
+
+    <nav class="nav-tabs">
+      <button class="nav-tab active" onclick="switchTab('chat')">💬 Chat</button>
+      <button class="nav-tab" onclick="switchTab('integrations')">🔗 Integrations</button>
+      <button class="nav-tab" onclick="switchTab('outline')">⚖️ TrialOutline Pro</button>
+    </nav>
+
     <div class="header-meta" id="headerMeta">Loading…</div>
   </header>
 
   <div class="workspace">
 
-    <!-- Sidebar -->
+    <!-- Sidebar (shared across views) -->
     <aside class="sidebar">
       <div class="sidebar-section">
         <div class="sidebar-label">Active Cases</div>
         <button class="btn btn-primary btn-sm btn-full" id="newCaseBtn">+ New Case</button>
       </div>
 
-      <!-- Cases list -->
       <div class="cases-list" id="casesList">
         <div class="case-empty">Loading cases…</div>
       </div>
 
-      <!-- New case form -->
       <div class="new-case-form hidden" id="newCaseForm">
         <div class="sidebar-label" style="margin-bottom:10px">New Case</div>
         <div class="form-row"><label>Case Name</label><input id="fc-name" placeholder="Smith v. Johnson" /></div>
@@ -241,8 +331,8 @@
       </div>
     </aside>
 
-    <!-- Chat -->
-    <main class="main">
+    <!-- ── VIEW: Chat ── -->
+    <div class="view-panel" id="view-chat">
       <div class="chat-header">
         <div>
           <div class="chat-title">CaseCommand AI</div>
@@ -253,7 +343,6 @@
         </div>
       </div>
 
-      <!-- Quick prompt chips -->
       <div class="chips">
         <button class="chip" onclick="setPrompt('Draft a meet and confer letter for ')">Draft M&amp;C letter</button>
         <button class="chip" onclick="setPrompt('Draft a demand letter for ')">Demand letter</button>
@@ -263,19 +352,17 @@
         <button class="chip" onclick="setPrompt('Draft a motion for ')">Draft motion</button>
       </div>
 
-      <!-- Messages -->
       <div class="messages" id="messages">
         <div class="message ai">
           <div class="avatar ai-av">AI</div>
           <div class="bubble">
             <p>Hello, Counselor. I'm CaseCommand AI — your legal research and drafting assistant.</p>
             <p>I have access to all your active cases. Ask me to <strong>analyze, strategize, or draft any document</strong> — letters, motions, memos, demand letters, complaints — and I'll generate a <strong>downloadable Word file</strong> automatically.</p>
-            <p>What would you like to work on?</p>
+            <p>Use the <strong>⚖️ TrialOutline Pro</strong> tab to generate a landscape examination outline viewer for any witness.</p>
           </div>
         </div>
       </div>
 
-      <!-- Input -->
       <div class="input-bar">
         <div class="input-wrap">
           <textarea id="msgInput" rows="1" placeholder="Ask a question or request a document…"></textarea>
@@ -284,9 +371,270 @@
           <svg viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
         </button>
       </div>
-    </main>
+    </div>
 
-  </div>
+    <!-- ── VIEW: Integrations ── -->
+    <div class="view-panel hidden" id="view-integrations">
+      <div class="view-hdr">
+        <div class="view-hdr-title">🔗 Integrations Hub</div>
+        <div class="view-hdr-sub">Connect CaseCommand to the tools you use every day</div>
+      </div>
+      <div class="view-inner">
+
+        <!-- Workflow banner -->
+        <div class="workflow-card" style="margin-bottom: 28px;">
+          <div class="workflow-title">⚡ What Integrations Enable</div>
+          <div class="workflow-steps">
+            <div class="wf-step">💬 Draft M&C Letter</div>
+            <div class="wf-arrow">→</div>
+            <div class="wf-step">📄 Word Doc Created</div>
+            <div class="wf-arrow">→</div>
+            <div class="wf-step">📧 Emailed via Outlook</div>
+            <div class="wf-arrow">→</div>
+            <div class="wf-step">📅 Deadline Calendared</div>
+            <div class="wf-arrow">→</div>
+            <div class="wf-step">💬 Team Notified on Slack</div>
+            <div class="wf-arrow">→</div>
+            <div class="wf-step">📁 Filed to Google Drive</div>
+          </div>
+        </div>
+
+        <!-- Communication -->
+        <div class="int-category-title">📧 Communication</div>
+        <div class="int-grid" style="margin-bottom:24px">
+          <div class="int-card">
+            <div class="int-icon">📨</div>
+            <div class="int-info">
+              <div class="int-name">Microsoft Outlook</div>
+              <div class="int-desc">Send drafted letters, receive case emails, auto-file attachments</div>
+              <div class="int-status pending">⚙ Coming Soon</div>
+            </div>
+            <button class="int-connect-btn" onclick="intConnect(this, 'Outlook')">Connect</button>
+          </div>
+          <div class="int-card">
+            <div class="int-icon">📬</div>
+            <div class="int-info">
+              <div class="int-name">Gmail</div>
+              <div class="int-desc">Send and receive case correspondence via Gmail</div>
+              <div class="int-status pending">⚙ Coming Soon</div>
+            </div>
+            <button class="int-connect-btn" onclick="intConnect(this, 'Gmail')">Connect</button>
+          </div>
+          <div class="int-card">
+            <div class="int-icon">💬</div>
+            <div class="int-info">
+              <div class="int-name">Slack</div>
+              <div class="int-desc">Notify team on deadlines, case updates, document generation</div>
+              <div class="int-status pending">⚙ Coming Soon</div>
+            </div>
+            <button class="int-connect-btn" onclick="intConnect(this, 'Slack')">Connect</button>
+          </div>
+          <div class="int-card">
+            <div class="int-icon">💼</div>
+            <div class="int-info">
+              <div class="int-name">Microsoft Teams</div>
+              <div class="int-desc">Share documents and updates with your litigation team</div>
+              <div class="int-status pending">⚙ Coming Soon</div>
+            </div>
+            <button class="int-connect-btn" onclick="intConnect(this, 'Teams')">Connect</button>
+          </div>
+        </div>
+
+        <!-- Calendar -->
+        <div class="int-category-title">📅 Calendar & Deadlines</div>
+        <div class="int-grid" style="margin-bottom:24px">
+          <div class="int-card">
+            <div class="int-icon">📅</div>
+            <div class="int-info">
+              <div class="int-name">Google Calendar</div>
+              <div class="int-desc">Auto-calendar deadlines, hearings, and response due dates</div>
+              <div class="int-status pending">⚙ Coming Soon</div>
+            </div>
+            <button class="int-connect-btn" onclick="intConnect(this, 'Google Calendar')">Connect</button>
+          </div>
+          <div class="int-card">
+            <div class="int-icon">🗓</div>
+            <div class="int-info">
+              <div class="int-name">Outlook Calendar</div>
+              <div class="int-desc">Sync case deadlines and court dates to Outlook</div>
+              <div class="int-status pending">⚙ Coming Soon</div>
+            </div>
+            <button class="int-connect-btn" onclick="intConnect(this, 'Outlook Calendar')">Connect</button>
+          </div>
+        </div>
+
+        <!-- File Storage -->
+        <div class="int-category-title">📁 File Storage</div>
+        <div class="int-grid" style="margin-bottom:24px">
+          <div class="int-card">
+            <div class="int-icon">🗂</div>
+            <div class="int-info">
+              <div class="int-name">Google Drive</div>
+              <div class="int-desc">Auto-save generated documents to case folders in Drive</div>
+              <div class="int-status pending">⚙ Coming Soon</div>
+            </div>
+            <button class="int-connect-btn" onclick="intConnect(this, 'Google Drive')">Connect</button>
+          </div>
+          <div class="int-card">
+            <div class="int-icon">📦</div>
+            <div class="int-info">
+              <div class="int-name">Dropbox</div>
+              <div class="int-desc">Store and access case files and exhibits from Dropbox</div>
+              <div class="int-status pending">⚙ Coming Soon</div>
+            </div>
+            <button class="int-connect-btn" onclick="intConnect(this, 'Dropbox')">Connect</button>
+          </div>
+          <div class="int-card">
+            <div class="int-icon">☁️</div>
+            <div class="int-info">
+              <div class="int-name">OneDrive</div>
+              <div class="int-desc">Save documents to Microsoft OneDrive for firm-wide access</div>
+              <div class="int-status pending">⚙ Coming Soon</div>
+            </div>
+            <button class="int-connect-btn" onclick="intConnect(this, 'OneDrive')">Connect</button>
+          </div>
+          <div class="int-card">
+            <div class="int-icon">📫</div>
+            <div class="int-info">
+              <div class="int-name">Box</div>
+              <div class="int-desc">Enterprise document management and secure file sharing</div>
+              <div class="int-status pending">⚙ Coming Soon</div>
+            </div>
+            <button class="int-connect-btn" onclick="intConnect(this, 'Box')">Connect</button>
+          </div>
+        </div>
+
+        <!-- Legal Tools -->
+        <div class="int-category-title">⚖️ Legal Practice Management</div>
+        <div class="int-grid" style="margin-bottom:24px">
+          <div class="int-card">
+            <div class="int-icon">🏛</div>
+            <div class="int-info">
+              <div class="int-name">Clio</div>
+              <div class="int-desc">Sync cases, clients, and matters from your Clio practice management</div>
+              <div class="int-status pending">⚙ Coming Soon</div>
+            </div>
+            <button class="int-connect-btn" onclick="intConnect(this, 'Clio')">Connect</button>
+          </div>
+          <div class="int-card">
+            <div class="int-icon">📋</div>
+            <div class="int-info">
+              <div class="int-name">DocuSign</div>
+              <div class="int-desc">Send settlement agreements and contracts for e-signature</div>
+              <div class="int-status pending">⚙ Coming Soon</div>
+            </div>
+            <button class="int-connect-btn" onclick="intConnect(this, 'DocuSign')">Connect</button>
+          </div>
+          <div class="int-card">
+            <div class="int-icon">🔍</div>
+            <div class="int-info">
+              <div class="int-name">Westlaw</div>
+              <div class="int-desc">Pull case law and cite-check directly in CaseCommand</div>
+              <div class="int-status pending">⚙ Coming Soon</div>
+            </div>
+            <button class="int-connect-btn" onclick="intConnect(this, 'Westlaw')">Connect</button>
+          </div>
+          <div class="int-card">
+            <div class="int-icon">📤</div>
+            <div class="int-info">
+              <div class="int-name">Court e-Filing</div>
+              <div class="int-desc">File documents directly with federal and state courts</div>
+              <div class="int-status pending">⚙ Coming Soon</div>
+            </div>
+            <button class="int-connect-btn" onclick="intConnect(this, 'e-Filing')">Connect</button>
+          </div>
+        </div>
+
+        <!-- Automation -->
+        <div class="int-category-title">⚡ Automation</div>
+        <div class="int-grid">
+          <div class="int-card">
+            <div class="int-icon">⚡</div>
+            <div class="int-info">
+              <div class="int-name">Zapier / Make</div>
+              <div class="int-desc">Connect to 5,000+ apps — custom workflows for your practice</div>
+              <div class="int-status pending">⚙ Coming Soon</div>
+            </div>
+            <button class="int-connect-btn" onclick="intConnect(this, 'Zapier')">Connect</button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ── VIEW: TrialOutline Pro ── -->
+    <div class="view-panel hidden" id="view-outline">
+      <div class="view-hdr">
+        <div class="view-hdr-title">⚖️ TrialOutline Pro</div>
+        <div class="view-hdr-sub">AI-generated landscape examination viewer — questions left, exhibit right</div>
+      </div>
+      <div class="outline-layout">
+
+        <!-- Form panel -->
+        <div class="outline-form-panel">
+          <h3>Generate Examination Outline</h3>
+
+          <div class="form-row">
+            <label>Case Name</label>
+            <select id="ol-case">
+              <option value="">— select case —</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <label>Witness Name</label>
+            <input id="ol-witness" placeholder="e.g. Dr. Jane Smith" />
+          </div>
+          <div class="form-row">
+            <label>Witness Role</label>
+            <select id="ol-role">
+              <option>Plaintiff</option>
+              <option>Defendant</option>
+              <option>Expert Witness</option>
+              <option>Eyewitness</option>
+              <option>Treating Physician</option>
+              <option>Corporate Representative</option>
+              <option>Other</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <label>Examination Type</label>
+            <select id="ol-type">
+              <option value="cross">Cross-Examination</option>
+              <option value="direct">Direct Examination</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <label>Case Theory (one sentence)</label>
+            <textarea id="ol-theory" rows="2" placeholder="e.g. Defendant's negligent maintenance caused plaintiff's injuries"></textarea>
+          </div>
+          <div class="form-row">
+            <label>Key Documents / Topics (one per line)</label>
+            <textarea id="ol-docs" rows="4" placeholder="Medical records from 3/15/2023&#10;Incident report&#10;Deposition of John Doe"></textarea>
+          </div>
+
+          <button class="btn btn-gold btn-full" id="olGenBtn" onclick="generateOutline()" style="margin-top:8px">
+            ⚖️ Generate Outline
+          </button>
+          <div id="olStatus" style="font-size:12px;color:var(--muted);margin-top:10px;text-align:center"></div>
+        </div>
+
+        <!-- Result panel -->
+        <div class="outline-result-panel">
+          <div class="outline-result-inner" id="olResult">
+            <div class="outline-placeholder">
+              <div style="font-size:48px;margin-bottom:16px">⚖️</div>
+              <h3>TrialOutline Pro</h3>
+              <p>Fill in the form and click <strong>Generate Outline</strong>.<br><br>
+              The AI will create a structured examination outline with strategic sections and questions.<br><br>
+              It opens in a <strong>landscape viewer</strong> with questions on the left and exhibit space on the right — ready for use at counsel table or to print.</p>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </div><!-- end workspace -->
 </div>
 
 <div id="toast"></div>
@@ -294,6 +642,7 @@
 <script>
 // ── State ──────────────────────────────────────────────────────────────────
 let cases = [];
+let activeTab = 'chat';
 
 // ── Boot ───────────────────────────────────────────────────────────────────
 (async () => {
@@ -303,6 +652,18 @@ let cases = [];
   } catch { document.getElementById('headerMeta').textContent = 'Server offline'; }
   loadCases();
 })();
+
+// ── Tab switching ───────────────────────────────────────────────────────────
+function switchTab(tab) {
+  activeTab = tab;
+  document.querySelectorAll('.nav-tab').forEach((el, i) => {
+    const tabs = ['chat', 'integrations', 'outline'];
+    el.classList.toggle('active', tabs[i] === tab);
+  });
+  document.getElementById('view-chat').classList.toggle('hidden', tab !== 'chat');
+  document.getElementById('view-integrations').classList.toggle('hidden', tab !== 'integrations');
+  document.getElementById('view-outline').classList.toggle('hidden', tab !== 'outline');
+}
 
 // ── API helper ─────────────────────────────────────────────────────────────
 async function api(path, opts = {}) {
@@ -320,6 +681,7 @@ async function loadCases() {
     cases = await api('/api/cases');
     renderCases();
     updateSubtitle();
+    populateCaseDropdowns();
   } catch (e) {
     document.getElementById('casesList').innerHTML =
       '<div class="case-empty">Could not load cases</div>';
@@ -344,6 +706,12 @@ function updateSubtitle() {
   const active = cases.filter(c => c.status === 'active').length;
   document.getElementById('chatSubtitle').textContent =
     `${active} active case${active !== 1 ? 's' : ''} loaded — ask anything`;
+}
+
+function populateCaseDropdowns() {
+  const sel = document.getElementById('ol-case');
+  sel.innerHTML = '<option value="">— select case —</option>' +
+    cases.map(c => `<option value="${esc(c.case_name)}">${esc(c.case_name)}</option>`).join('');
 }
 
 // ── New case form ──────────────────────────────────────────────────────────
@@ -379,7 +747,7 @@ function closeForm() {
 }
 
 // ── Chat ───────────────────────────────────────────────────────────────────
-const input  = document.getElementById('msgInput');
+const input   = document.getElementById('msgInput');
 const sendBtn = document.getElementById('sendBtn');
 
 input.addEventListener('keydown', e => {
@@ -391,6 +759,7 @@ input.addEventListener('input', () => {
 });
 
 function setPrompt(text) {
+  switchTab('chat');
   input.value = text;
   input.focus();
   input.style.height = 'auto';
@@ -487,24 +856,78 @@ function clearChat() {
   document.getElementById('messages').innerHTML = '';
 }
 
+// ── Integrations ────────────────────────────────────────────────────────────
+function intConnect(btn, name) {
+  toast(`${name} integration — coming soon! We'll notify you when it's ready.`);
+}
+
+// ── TrialOutline Pro ────────────────────────────────────────────────────────
+async function generateOutline() {
+  const caseName  = document.getElementById('ol-case').value.trim();
+  const witness   = document.getElementById('ol-witness').value.trim();
+  const role      = document.getElementById('ol-role').value;
+  const examType  = document.getElementById('ol-type').value;
+  const theory    = document.getElementById('ol-theory').value.trim();
+  const docsRaw   = document.getElementById('ol-docs').value.trim();
+
+  if (!witness) { toast('Enter a witness name', true); return; }
+
+  const documents = docsRaw ? docsRaw.split('\n').map(s => s.trim()).filter(Boolean) : [];
+
+  const btn    = document.getElementById('olGenBtn');
+  const status = document.getElementById('olStatus');
+  btn.disabled = true;
+  btn.textContent = '⏳ Generating…';
+  status.textContent = 'AI is building the examination outline — this takes 15-30 seconds…';
+
+  try {
+    const data = await api('/api/outline', {
+      method: 'POST',
+      body: JSON.stringify({
+        case_name: caseName || 'Active Case',
+        witness_name: witness,
+        witness_role: role,
+        exam_type: examType,
+        case_theory: theory,
+        documents,
+      }),
+    });
+
+    status.textContent = '';
+    document.getElementById('olResult').innerHTML = `
+      <div class="outline-launch-card">
+        <div style="font-size:36px;margin-bottom:12px">⚖️</div>
+        <h3>Outline Ready</h3>
+        <p>${examType === 'cross' ? 'Cross' : 'Direct'}-examination of <strong>${esc(witness)}</strong><br>
+        ${caseName ? esc(caseName) + '<br>' : ''}
+        Generated by CaseCommand AI · LawClaw</p>
+        <a href="${esc(data.url)}" target="_blank" class="launch-btn">🖥 Open Landscape Viewer</a>
+        <div style="font-size:11px;color:var(--muted);margin-top:12px">
+          Opens in a new tab — use ↑↓ arrow keys to navigate · Print-ready landscape format
+        </div>
+      </div>`;
+    toast('Examination outline ready!');
+  } catch (e) {
+    status.textContent = '⚠️ Error: ' + e.message;
+    toast(e.message, true);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '⚖️ Generate Outline';
+  }
+}
+
 // ── Text formatting ────────────────────────────────────────────────────────
 function formatText(raw) {
   let s = esc(raw);
-  // headers
   s = s.replace(/^### (.+)$/gm, '<strong style="font-size:13px;display:block;margin-top:10px">$1</strong>');
   s = s.replace(/^## (.+)$/gm,  '<strong style="font-size:14px;display:block;margin-top:12px">$1</strong>');
   s = s.replace(/^# (.+)$/gm,   '<strong style="font-size:15px;display:block;margin-top:14px">$1</strong>');
-  // bold / italic
   s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
   s = s.replace(/\*([^*]+)\*/g,     '<em>$1</em>');
-  // inline code
   s = s.replace(/`([^`]+)`/g, '<code>$1</code>');
-  // bullets
   s = s.replace(/^[•\-\*] (.+)$/gm, '<li>$1</li>');
   s = s.replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>');
-  // numbered list
   s = s.replace(/^\d+\. (.+)$/gm, '<li>$1</li>');
-  // paragraphs
   s = s.split(/\n\n+/).map(p => p.trim() ? `<p>${p.replace(/\n/g, '<br>')}</p>` : '').join('');
   return s;
 }
