@@ -369,11 +369,22 @@ async def health_check():
     }
 
 
-# ── Static Files (React Frontend) ────────────────────────────
+# ── Static Files (Frontend) ──────────────────────────────────
 
 static_dir = Path(__file__).parent / "static"
+
+
+@app.get("/")
+async def serve_root():
+    index = static_dir / "index.html"
+    if index.exists():
+        return FileResponse(str(index), media_type="text/html")
+    return JSONResponse({"status": "running", "version": "2.0.0", "docs": "/docs"})
+
+
+# Mount static files for any other assets (CSS, JS, images)
 if static_dir.exists():
-    app.mount("/", StaticFiles(directory=str(static_dir), html=True), name="static")
+    app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
 
 if __name__ == "__main__":
