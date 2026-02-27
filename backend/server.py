@@ -376,15 +376,34 @@ async def health_check():
 
 # ── Static Files (Frontend) ──────────────────────────────────
 
-static_dir = Path(__file__).parent / "static"
+# Try multiple possible locations for the static directory
+_possible_dirs = [
+    Path(__file__).parent / "static",
+    Path("/app/static"),
+    Path.cwd() / "static",
+]
+static_dir = None
+for _d in _possible_dirs:
+    if (_d / "index.html").exists():
+        static_dir = _d
+        break
+if static_dir is None:
+    static_dir = Path(__file__).parent / "static"
 
 
 @app.get("/")
 async def serve_root():
-    index = static_dir / "index.html"
-    if index.exists():
-        return FileResponse(str(index), media_type="text/html")
-    return JSONResponse({"status": "running", "version": "2.0.0", "docs": "/docs"})
+    # Try multiple locations for index.html
+    for candidate in _possible_dirs:
+        index = candidate / "index.html"
+        if index.exists():
+            return FileResponse(str(index), media_type="text/html")
+    return JSONResponse({
+        "status": "running",
+        "version": "2.0.0",
+        "docs": "/docs",
+        "debug_paths": [str(d) + " exists=" + str(d.exists()) for d in _possible_dirs],
+    })
 
 
 # Mount static files for any other assets (CSS, JS, images)
