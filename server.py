@@ -114,12 +114,13 @@ def is_document_request(message: str) -> bool:
 
 
 def extract_title_and_body(text: str, fallback: str = "Legal_Document") -> tuple[str, str]:
-    """Return (title, body) — strips the DOCUMENT_TITLE line if present."""
+    """Return (title, body) — strips the DOCUMENT_TITLE line wherever it appears."""
     lines = text.strip().split("\n")
-    if lines and lines[0].strip().startswith("DOCUMENT_TITLE:"):
-        title = lines[0].replace("DOCUMENT_TITLE:", "").strip()
-        body = "\n".join(lines[1:]).lstrip("\n")
-        return title, body
+    for i, line in enumerate(lines):
+        if line.strip().startswith("DOCUMENT_TITLE:"):
+            title = line.replace("DOCUMENT_TITLE:", "").strip()
+            body = "\n".join(lines[:i] + lines[i + 1:]).lstrip("\n")
+            return title, body
     return fallback, text
 
 
@@ -274,8 +275,8 @@ def chat(req: ChatRequest, _: None = Depends(verify_token)):
 
     result = {"reply": text, "model": response["model"], "document": None}
 
-    # Generate .docx when Claude returns a DOCUMENT_TITLE header
-    if text.strip().startswith("DOCUMENT_TITLE:"):
+    # Generate .docx when Claude returns a DOCUMENT_TITLE header (anywhere in response)
+    if "DOCUMENT_TITLE:" in text:
         try:
             title, body = extract_title_and_body(text, fallback="Legal_Document")
             filename = build_docx(title, body)
