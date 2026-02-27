@@ -202,6 +202,7 @@ async def serve_ui():
     """Serve the CaseCommand UI."""
     for path in [
         Path(__file__).parent / "static" / "index.html",
+        Path(__file__).parent / "index.html",
         Path(__file__).parent / "casecommand-ui.html",
     ]:
         if path.exists():
