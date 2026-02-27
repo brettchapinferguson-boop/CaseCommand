@@ -362,10 +362,15 @@ async def get_dashboard(request: Request):
 @app.get("/api/v2/health")
 @app.get("/api/health")
 async def health_check():
+    index_path = static_dir / "index.html"
     return {
         "status": "healthy",
         "version": "2.0.0",
-        "service": "CaseCommand v2.0"
+        "service": "CaseCommand v2.0",
+        "static_dir": str(static_dir),
+        "static_dir_exists": static_dir.exists(),
+        "index_exists": index_path.exists(),
+        "cwd": os.getcwd(),
     }
 
 
