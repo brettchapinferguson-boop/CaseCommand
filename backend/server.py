@@ -360,6 +360,7 @@ async def get_dashboard(request: Request):
 # ── Health Check ─────────────────────────────────────────────
 
 @app.get("/api/v2/health")
+@app.get("/api/health")
 async def health_check():
     return {
         "status": "healthy",

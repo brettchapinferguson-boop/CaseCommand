@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: casecommand-v2
+    name: CaseCommand
     runtime: docker
     dockerfilePath: ./Dockerfile
     envVars:
@@ -14,4 +14,4 @@ services:
         sync: false
       - key: PORT
         value: 8000
-    healthCheckPath: /api/v2/health
+    healthCheckPath: /api/health
