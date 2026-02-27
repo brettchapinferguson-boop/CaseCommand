@@ -1,22 +1,15 @@
 services:
   - type: web
-    name: CaseCommand
+    name: casecommand
     runtime: python
-    buildCommand: |
-      pip install -r backend/requirements.txt && mkdir -p backend/static && cp frontend/index.html backend/static/index.html && echo "Build complete: frontend copied to backend/static/"
-    startCommand: cd backend && uvicorn server:app --host 0.0.0.0 --port $PORT
-    repo: https://github.com/brettchapinferguson-boop/CaseCommand.git
-    branch: main
-    autoDeploy: true
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn server:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: ANTHROPIC_API_KEY
         sync: false
       - key: SUPABASE_URL
         sync: false
-      - key: SUPABASE_KEY
-        sync: false
-      - key: SUPABASE_SERVICE_KEY
+      - key: SUPABASE_SECRET_KEY
         sync: false
       - key: PYTHON_VERSION
         value: 3.11.11
-    healthCheckPath: /api/health
