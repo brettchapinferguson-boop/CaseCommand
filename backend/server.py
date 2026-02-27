@@ -364,49 +364,105 @@ async def get_dashboard(request: Request):
 async def health_check():
     return {
         "status": "healthy",
-        "version": "2.0.1",
+        "version": "2.0.2",
         "service": "CaseCommand v2.0",
         "frontend_loaded": _index_html_content is not None,
+        "frontend_source": _found_at,
     }
 
 
 # ── Static Files (Frontend) ──────────────────────────────────
 
-# Try multiple possible locations for index.html
-# Render runs from /opt/render/project/src/ (repo root), not Docker /app/
-_repo_root = Path(__file__).parent.parent  # backend/ -> repo root
-_index_html_content = None
-_search_paths = [
-    _repo_root / "frontend" / "index.html",           # repo layout (Render native)
-    Path(__file__).parent / "static" / "index.html",   # Docker layout
-    Path("/app/static/index.html"),                     # Docker explicit
-    Path.cwd() / "static" / "index.html",              # CWD fallback
-]
-for _p in _search_paths:
-    if _p.exists():
-        _index_html_content = _p.read_text()
-        break
+from fastapi.responses import HTMLResponse
+import glob
 
-static_dir = Path(__file__).parent / "static"
+def _find_index_html() -> tuple:
+    """
+    Aggressively search for index.html in all possible locations.
+    Works in Docker (/app/static/), Render native (/opt/render/project/src/),
+    and local dev environments.
+    """
+    _server_dir = Path(__file__).resolve().parent
+    _repo_root = _server_dir.parent
+    _cwd = Path.cwd()
+
+    search_paths = [
+        # Docker layout: backend files copied to /app/, frontend to /app/static/
+        _server_dir / "static" / "index.html",
+        Path("/app/static/index.html"),
+        # Render native: repo at /opt/render/project/src/
+        _repo_root / "frontend" / "index.html",
+        Path("/opt/render/project/src/frontend/index.html"),
+        # Build script copies to backend/static/
+        _server_dir / "static" / "index.html",
+        _repo_root / "backend" / "static" / "index.html",
+        Path("/opt/render/project/src/backend/static/index.html"),
+        # CWD-relative
+        _cwd / "static" / "index.html",
+        _cwd / "frontend" / "index.html",
+        _cwd / "index.html",
+        # Root-level (old repo layout)
+        _repo_root / "index.html",
+    ]
+
+    # Also try a glob search as last resort
+    glob_patterns = [
+        str(_repo_root / "**" / "index.html"),
+        "/opt/render/project/src/**/index.html",
+        "/app/**/index.html",
+    ]
+
+    for p in search_paths:
+        if p.exists():
+            return p.read_text(), search_paths, str(p)
+
+    # Glob fallback
+    for pattern in glob_patterns:
+        matches = glob.glob(pattern, recursive=True)
+        for m in matches:
+            mp = Path(m)
+            # Skip node_modules or .git
+            if ".git" not in str(mp) and "node_modules" not in str(mp):
+                return mp.read_text(), search_paths, str(mp)
+
+    return None, search_paths, None
+
+_index_html_content, _search_paths, _found_at = _find_index_html()
+
+# Log at startup so deploy logs show what happened
+import sys
+if _index_html_content:
+    print(f"[CaseCommand] ✅ Frontend loaded from: {_found_at} ({len(_index_html_content)} bytes)", file=sys.stderr)
+else:
+    print(f"[CaseCommand] ❌ Frontend NOT found. Searched:", file=sys.stderr)
+    for p in _search_paths:
+        print(f"  {p} exists={p.exists()}", file=sys.stderr)
 
 
 @app.get("/")
 async def serve_root():
     if _index_html_content:
-        from fastapi.responses import HTMLResponse
         return HTMLResponse(content=_index_html_content)
     return JSONResponse({
         "status": "running",
-        "version": "2.0.0",
+        "version": "2.0.1",
         "docs": "/docs",
         "note": "Frontend not found. API is running.",
+        "server_file": str(Path(__file__).resolve()),
+        "cwd": str(Path.cwd()),
         "searched": [str(p) + " exists=" + str(p.exists()) for p in _search_paths],
     })
 
 
-# Mount static files for any other assets (CSS, JS, images)
-if static_dir.exists():
-    app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+# Mount static directory if it exists
+for _static_candidate in [
+    Path(__file__).resolve().parent / "static",
+    Path("/app/static"),
+    Path.cwd() / "static",
+]:
+    if _static_candidate.exists() and _static_candidate.is_dir():
+        app.mount("/static", StaticFiles(directory=str(_static_candidate)), name="static")
+        break
 
 
 if __name__ == "__main__":
