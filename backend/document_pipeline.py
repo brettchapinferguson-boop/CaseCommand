@@ -11,9 +11,27 @@ from typing import Optional
 from config import get_settings
 from database import CaseDB
 
-settings = get_settings()
-client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
-db = CaseDB()
+_settings = None
+_client = None
+_db = None
+
+def _get_settings():
+    global _settings
+    if _settings is None:
+        _settings = get_settings()
+    return _settings
+
+def _get_client():
+    global _client
+    if _client is None:
+        _client = anthropic.Anthropic(api_key=_get_settings().anthropic_api_key)
+    return _client
+
+def _get_db():
+    global _db
+    if _db is None:
+        _db = CaseDB()
+    return _db
 
 
 def extract_text_from_pdf(file_bytes: bytes) -> dict:
@@ -37,8 +55,8 @@ def extract_text_from_pdf(file_bytes: bytes) -> dict:
 
 def classify_document(text: str) -> dict:
     """Use Claude to classify the document type and extract key metadata"""
-    response = client.messages.create(
-        model=settings.default_model,
+    response = _get_client().messages.create(
+        model=_get_settings().default_model,
         max_tokens=2000,
         system="""You are a litigation document classifier. Analyze the document and return a JSON object with:
 {
@@ -74,8 +92,8 @@ Return ONLY valid JSON, no markdown.""",
 
 def analyze_document_for_case(text: str, doc_classification: dict) -> dict:
     """Deep AI analysis: extract facts, issues, timeline, strengths/weaknesses"""
-    response = client.messages.create(
-        model=settings.default_model,
+    response = _get_client().messages.create(
+        model=_get_settings().default_model,
         max_tokens=4000,
         system="""You are an expert litigation analyst. Analyze this legal document thoroughly and return a JSON object:
 {
@@ -117,6 +135,7 @@ def process_document_for_new_case(doc_id: str, user_id: str) -> dict:
     Full pipeline: Process uploaded document and create a new case.
     Returns the created case and document records.
     """
+    db = _get_db()
     # 1. Get document record
     doc_record = db.get_document(doc_id)
     if not doc_record:
@@ -256,6 +275,7 @@ def process_document_for_existing_case(doc_id: str, case_id: str, user_id: str) 
     """
     Process document and add to existing case, merging new facts and timeline.
     """
+    db = _get_db()
     doc_record = db.get_document(doc_id)
     if not doc_record:
         raise ValueError(f"Document {doc_id} not found")
@@ -355,6 +375,7 @@ def process_document_for_existing_case(doc_id: str, case_id: str, user_id: str) 
 
 def _update_case_analysis(case_id: str, user_id: str, new_analysis: dict, existing_case: dict):
     """Merge new document analysis into existing case"""
+    db = _get_db()
     # Merge key issues
     existing_issues = existing_case.get("key_issues") or []
     if isinstance(existing_issues, str):
@@ -379,8 +400,8 @@ def _update_case_analysis(case_id: str, user_id: str, new_analysis: dict, existi
     # Regenerate summary with all info
     if new_analysis.get("case_summary"):
         existing_summary = existing_case.get("summary", "")
-        response = client.messages.create(
-            model=settings.default_model,
+        response = _get_client().messages.create(
+            model=_get_settings().default_model,
             max_tokens=500,
             messages=[{"role": "user", "content": f"""Merge these two case summaries into one comprehensive summary (3-5 sentences):
 

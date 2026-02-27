@@ -6,7 +6,6 @@ Main API with document upload, case management, and agentic chat.
 import os
 import json
 import uuid
-import fitz  # PyMuPDF
 from pathlib import Path
 from typing import Optional
 from datetime import datetime
@@ -26,16 +25,29 @@ from document_pipeline import (
 )
 from agent import chat as agent_chat
 
-settings = get_settings()
-db = CaseDB()
-
 app = FastAPI(title="CaseCommand v2.0", version="2.0.0")
+
+# Lazy-init: avoid crashing at import time if env vars not yet available
+_db = None
+_settings = None
+
+def get_db():
+    global _db
+    if _db is None:
+        _db = CaseDB()
+    return _db
+
+def _get_settings():
+    global _settings
+    if _settings is None:
+        _settings = get_settings()
+    return _settings
 
 # CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Tighten in production
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -99,6 +111,7 @@ async def upload_document(
         raise HTTPException(400, "No filename provided")
     
     file_bytes = await file.read()
+    settings = _get_settings()
     if len(file_bytes) > settings.max_upload_size:
         raise HTTPException(400, f"File too large. Max {settings.max_upload_size // 1024 // 1024}MB")
     
@@ -119,7 +132,7 @@ async def upload_document(
     
     # Upload to Supabase Storage
     try:
-        file_path = db.upload_file(user_id, file.filename, file_bytes, file.content_type or "application/octet-stream")
+        file_path = get_db().upload_file(user_id, file.filename, file_bytes, file.content_type or "application/octet-stream")
     except Exception as e:
         # If storage fails, still create the record with text
         file_path = f"local/{user_id}/{file.filename}"
@@ -138,7 +151,7 @@ async def upload_document(
         "processing_status": "pending"
     }
     
-    doc = db.create_document(doc_data)
+    doc = get_db().create_document(doc_data)
     
     return {
         "success": True,
@@ -193,17 +206,18 @@ async def process_document(request: Request, body: ProcessDocRequest):
 @app.get("/api/v2/cases")
 async def list_cases(request: Request, status: Optional[str] = None):
     user_id = get_user_id(request)
-    cases = db.get_cases(user_id, status)
+    cases = get_db().get_cases(user_id, status)
     return {"success": True, "cases": cases}
 
 
 @app.get("/api/v2/cases/{case_id}")
 async def get_case(request: Request, case_id: str):
     user_id = get_user_id(request)
+    db = get_db()
     case = db.get_case(case_id)
     if not case:
         raise HTTPException(404, "Case not found")
-    
+
     documents = db.get_documents(case_id)
     facts = db.get_facts(case_id)
     timeline = db.get_timeline(case_id)
@@ -231,25 +245,25 @@ async def update_case(request: Request, case_id: str, body: CaseUpdateRequest):
     if not update_data:
         raise HTTPException(400, "No fields to update")
     
-    case = db.update_case(case_id, update_data)
+    case = get_db().update_case(case_id, update_data)
     return {"success": True, "case": case}
 
 
 @app.get("/api/v2/cases/{case_id}/documents")
 async def get_case_documents(request: Request, case_id: str):
-    documents = db.get_documents(case_id)
+    documents = get_db().get_documents(case_id)
     return {"success": True, "documents": documents}
 
 
 @app.get("/api/v2/cases/{case_id}/facts")
 async def get_case_facts(request: Request, case_id: str, category: Optional[str] = None):
-    facts = db.get_facts(case_id, category)
+    facts = get_db().get_facts(case_id, category)
     return {"success": True, "facts": facts}
 
 
 @app.get("/api/v2/cases/{case_id}/timeline")
 async def get_case_timeline(request: Request, case_id: str):
-    timeline = db.get_timeline(case_id)
+    timeline = get_db().get_timeline(case_id)
     return {"success": True, "timeline": timeline}
 
 
@@ -279,7 +293,7 @@ async def chat_endpoint(request: Request, body: ChatRequest):
 
 @app.get("/api/v2/chat/history/{session_id}")
 async def get_chat_history(request: Request, session_id: str):
-    history = db.get_conversation(session_id)
+    history = get_db().get_conversation(session_id)
     return {"success": True, "messages": history}
 
 
@@ -288,14 +302,15 @@ async def get_chat_history(request: Request, session_id: str):
 @app.get("/api/v2/actions/pending")
 async def get_pending_actions(request: Request):
     user_id = get_user_id(request)
-    actions = db.get_pending_actions(user_id)
+    actions = get_db().get_pending_actions(user_id)
     return {"success": True, "actions": actions}
 
 
 @app.post("/api/v2/actions/approve")
 async def approve_action(request: Request, body: ActionApprovalRequest):
     user_id = get_user_id(request)
-    
+    db = get_db()
+
     if body.approved:
         action = db.approve_action(body.action_id, user_id)
         # TODO: Execute the actual action (send email, create calendar event)
@@ -311,6 +326,7 @@ async def approve_action(request: Request, body: ActionApprovalRequest):
 @app.get("/api/v2/dashboard")
 async def get_dashboard(request: Request):
     user_id = get_user_id(request)
+    db = get_db()
     cases = db.get_cases(user_id)
     pending_actions = db.get_pending_actions(user_id)
     
