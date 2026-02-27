@@ -11,9 +11,27 @@ from config import get_settings
 from database import CaseDB
 from document_pipeline import process_document_for_new_case, process_document_for_existing_case
 
-settings = get_settings()
-ai_client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
-db = CaseDB()
+_settings = None
+_ai_client = None
+_db = None
+
+def _get_settings():
+    global _settings
+    if _settings is None:
+        _settings = get_settings()
+    return _settings
+
+def _get_ai_client():
+    global _ai_client
+    if _ai_client is None:
+        _ai_client = anthropic.Anthropic(api_key=_get_settings().anthropic_api_key)
+    return _ai_client
+
+def _get_db():
+    global _db
+    if _db is None:
+        _db = CaseDB()
+    return _db
 
 
 # ── Tool Definitions ──────────────────────────────────────────
@@ -236,7 +254,10 @@ TOOLS = [
 
 def execute_tool(tool_name: str, tool_input: dict, user_id: str) -> str:
     """Execute a tool call and return the result as a string"""
-    
+    db = _get_db()
+    settings = _get_settings()
+    ai_client = _get_ai_client()
+
     try:
         if tool_name == "create_case_from_document":
             result = process_document_for_new_case(tool_input["document_id"], user_id)
@@ -417,14 +438,18 @@ def chat(user_message: str, user_id: str, session_id: str, case_id: Optional[str
     Main chat function. Handles multi-turn conversation with function calling.
     Returns the assistant's response and any actions taken.
     """
+    db = _get_db()
+    settings = _get_settings()
+    ai_client = _get_ai_client()
+
     # Get conversation history
     history = db.get_conversation(session_id, limit=20)
-    
+
     # Build messages
     messages = []
     for msg in history:
         messages.append({"role": msg["role"], "content": msg["content"]})
-    
+
     # Add case context if active
     system = SYSTEM_PROMPT
     if case_id:
