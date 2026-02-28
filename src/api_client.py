@@ -1,6 +1,6 @@
 """
 CaseCommand AI — Claude API Integration Layer
-Uses httpx to call the Anthropic Messages API directly.
+Agentic orchestrator using async httpx and native tool use.
 """
 
 import os
@@ -46,25 +46,62 @@ class CaseCommandAI:
             "content-type": "application/json",
         }
 
-    def _call_api(self, system_prompt: str, user_message: str, max_tokens: int = 2048) -> dict:
-        """POST to the Anthropic Messages API and return a normalized result dict."""
-        payload = {
-            "model": self.MODEL,
-            "max_tokens": max_tokens,
-            "system": system_prompt,
-            "messages": [{"role": "user", "content": user_message}],
-        }
-        # Prefer the HTTP(S) proxy over any SOCKS proxy (which requires the
-        # optional socksio package).  trust_env=False prevents httpx from
-        # picking up all_proxy / ALL_PROXY automatically.
+        # ------------------------------------------------------------------
+        # Agent tool definitions
+        # ------------------------------------------------------------------
+        self.tools = [
+            {
+                "name": "generate_legal_document",
+                "description": (
+                    "Draft a substantive legal document (e.g., Meet and Confer letter, "
+                    "motion, pleading, settlement agreement, demand letter). Use this "
+                    "whenever the user asks to draft, write, or generate a document. "
+                    "Returns structured JSON with title and body so the system can "
+                    "compile a downloadable .docx file."
+                ),
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "title": {
+                            "type": "string",
+                            "description": "Short descriptive filename, e.g., Meet_and_Confer_Smith_v_Jones",
+                        },
+                        "body": {
+                            "type": "string",
+                            "description": (
+                                "The fully formatted text of the legal document. "
+                                "Use markdown for headers (###) and bolding (**text**)."
+                            ),
+                        },
+                    },
+                    "required": ["title", "body"],
+                },
+            }
+        ]
+
+    # ------------------------------------------------------------------
+    # Low-level HTTP helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _get_proxy() -> str | None:
         _env_proxy = (
             os.environ.get("HTTPS_PROXY")
             or os.environ.get("https_proxy")
             or os.environ.get("HTTP_PROXY")
             or os.environ.get("http_proxy")
         )
-        _proxy = _env_proxy if _env_proxy and not _env_proxy.startswith("socks") else None
-        with httpx.Client(timeout=90.0, trust_env=False, proxy=_proxy) as client:
+        return _env_proxy if _env_proxy and not _env_proxy.startswith("socks") else None
+
+    def _call_api(self, system_prompt: str, user_message: str, max_tokens: int = 2048) -> dict:
+        """Synchronous POST — kept for non-chat endpoints (discovery, outline, settlement)."""
+        payload = {
+            "model": self.MODEL,
+            "max_tokens": max_tokens,
+            "system": system_prompt,
+            "messages": [{"role": "user", "content": user_message}],
+        }
+        with httpx.Client(timeout=90.0, trust_env=False, proxy=self._get_proxy()) as client:
             response = client.post(
                 f"{self.BASE_URL}/messages",
                 headers=self._headers,
@@ -78,6 +115,72 @@ class CaseCommandAI:
             "model": data["model"],
             "usage": data.get("usage", {}),
         }
+
+    async def _call_api_async(
+        self, system_prompt: str, messages: list, max_tokens: int = 4096
+    ) -> dict:
+        """Async POST with tool-use support — used by the agent loop."""
+        payload = {
+            "model": self.MODEL,
+            "max_tokens": max_tokens,
+            "system": system_prompt,
+            "messages": messages,
+            "tools": self.tools,
+        }
+        async with httpx.AsyncClient(
+            timeout=120.0, trust_env=False, proxy=self._get_proxy()
+        ) as client:
+            response = await client.post(
+                f"{self.BASE_URL}/messages",
+                headers=self._headers,
+                json=payload,
+            )
+            response.raise_for_status()
+            return response.json()
+
+    # ------------------------------------------------------------------
+    # Agent loop — routes between plain chat and tool calls
+    # ------------------------------------------------------------------
+
+    async def chat_agent_loop(
+        self, user_message: str, active_cases_context: str = ""
+    ) -> dict:
+        """
+        Master agent router. Sends the user message to Claude, checks
+        whether it wants to reply normally or invoke a tool, and returns
+        a dict with 'reply', 'tool_calls', and 'model'.
+        """
+        system_prompt = (
+            "You are Casey, the lead litigation assistant for CaseCommand. "
+            "You act as an expert trial attorney and elite paralegal. "
+            "You manage case files, draft precise legal documents (applying "
+            "strict formatting rules, particularly for California state court "
+            "and FEHA matters where applicable), and assist with litigation strategy.\n"
+            "If the user asks you to draft a document, you MUST use the "
+            "`generate_legal_document` tool. Do NOT output raw document text "
+            "in your standard reply when using the tool.\n\n"
+            f"Active Cases Context:\n{active_cases_context}"
+        )
+
+        messages = [{"role": "user", "content": user_message}]
+        data = await self._call_api_async(system_prompt, messages)
+
+        content_blocks = data.get("content", [])
+        response_dict: dict = {
+            "reply": "",
+            "tool_calls": [],
+            "model": data.get("model", self.MODEL),
+        }
+
+        for block in content_blocks:
+            if block["type"] == "text":
+                response_dict["reply"] += block["text"] + "\n"
+            elif block["type"] == "tool_use":
+                response_dict["tool_calls"].append(
+                    {"id": block["id"], "name": block["name"], "input": block["input"]}
+                )
+
+        return response_dict
 
     # ------------------------------------------------------------------
     # DisputeFlow — Discovery Analysis
@@ -128,7 +231,7 @@ Please provide:
         return self._call_api(system_prompt, user_message)
 
     # ------------------------------------------------------------------
-    # TrialPrep — Examination Outline
+    # TrialPrep — Examination Outline (synchronous — called by dedicated endpoints)
     # ------------------------------------------------------------------
 
     def generate_examination_outline(
