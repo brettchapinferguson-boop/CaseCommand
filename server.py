@@ -264,7 +264,7 @@ def create_case(case: CaseCreate, _: None = Depends(verify_token)):
 
 
 @app.post("/api/chat")
-def chat(req: ChatRequest, _: None = Depends(verify_token)):
+async def chat(req: ChatRequest, _: None = Depends(verify_token)):
     cases_result = supabase.table("cases").select("*").eq("status", "active").execute()
     cases = cases_result.data
 
@@ -279,36 +279,43 @@ def chat(req: ChatRequest, _: None = Depends(verify_token)):
     else:
         cases_context = "No active cases."
 
-    is_doc = is_document_request(req.message)
-    doc_hint = DOCUMENT_FORMAT_INSTRUCTIONS if is_doc else ""
+    # Use the async agent loop — Claude decides whether to reply or use a tool
+    response = await ai_client.chat_agent_loop(req.message, cases_context)
 
-    system_prompt = (
-        "You are CaseCommand AI, an expert legal assistant. "
-        "You have access to the following active cases:\n\n"
-        f"{cases_context}\n\n"
-        f"{doc_hint}"
-        "Answer the attorney's questions accurately and helpfully."
-    )
+    result = {"reply": response["reply"].strip(), "model": response["model"], "document": None}
 
-    response = ai_client._call_api(system_prompt, req.message)
-    text = response["text"]
+    # If Claude used the generate_legal_document tool, build the .docx
+    for tool_call in response.get("tool_calls", []):
+        if tool_call["name"] == "generate_legal_document":
+            try:
+                title = tool_call["input"]["title"]
+                body = tool_call["input"]["body"]
+                filename = build_docx(title, body)
+                result["document"] = {
+                    "filename": filename,
+                    "url": f"/api/documents/{filename}",
+                    "title": title.replace("_", " "),
+                }
+                # Show clean body text in chat if reply was empty (tool-only response)
+                if not result["reply"]:
+                    result["reply"] = body
+            except Exception:
+                pass  # never break chat over a docx failure
 
-    result = {"reply": text, "model": response["model"], "document": None}
-
-    # Generate .docx for any document request OR if Claude included the title marker
-    if is_doc or "DOCUMENT_TITLE:" in text:
+    # Fallback: still handle the old DOCUMENT_TITLE: marker for backwards compat
+    if not result["document"] and "DOCUMENT_TITLE:" in result["reply"]:
         try:
             fallback = _title_from_message(req.message)
-            title, body = extract_title_and_body(text, fallback=fallback)
+            title, body = extract_title_and_body(result["reply"], fallback=fallback)
             filename = build_docx(title, body)
             result["document"] = {
                 "filename": filename,
                 "url": f"/api/documents/{filename}",
                 "title": title.replace("_", " "),
             }
-            result["reply"] = body  # show clean body text in chat
+            result["reply"] = body
         except Exception:
-            pass  # never break chat over a docx failure
+            pass
 
     return result
 
