@@ -1,16 +1,21 @@
 """
 CaseCommand Server — FastAPI app on port 3000
+
+Unified gateway for web dashboard, Telegram, WhatsApp, and SMS channels.
+All channels route through the same Casey agent (src/agent.py).
 """
 
 import os
 import re
+import json
 import uuid
+import logging
 from pathlib import Path
 from dotenv import load_dotenv
 
 load_dotenv()
 
-from fastapi import FastAPI, HTTPException, Depends, Security
+from fastapi import FastAPI, HTTPException, Depends, Security, Request, BackgroundTasks
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
@@ -21,6 +26,11 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 import uvicorn
 
 from src.api_client import CaseCommandAI
+from src.agent import process_message
+from src.channels import telegram as tg_channel
+from src.channels import twilio as tw_channel
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="CaseCommand API")
 
@@ -69,6 +79,15 @@ class CaseCreate(BaseModel):
 
 class ChatRequest(BaseModel):
     message: str
+    session_id: str | None = None
+    current_case_id: str | None = None
+
+
+class AIRequest(BaseModel):
+    system: str
+    message: str
+    max_tokens: int = 4096
+    temperature: float = 0.3
 
 
 class DiscoveryRequest(BaseModel):
@@ -237,6 +256,16 @@ def health(_: None = Depends(verify_token)):
     return {"status": "ok", "model": "claude-sonnet-4-6"}
 
 
+@app.post("/api/ai")
+async def ai_generate(req: AIRequest, _: None = Depends(verify_token)):
+    """General-purpose AI endpoint for module features (Meet & Confer, Discovery, etc.)."""
+    try:
+        response = ai_client._call_api(req.system, req.message, max_tokens=req.max_tokens)
+        return {"text": response["text"], "success": True, "usage": response.get("usage", {})}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/api/cases")
 def list_cases(_: None = Depends(verify_token)):
     result = supabase.table("cases").select("*").execute()
@@ -265,59 +294,17 @@ def create_case(case: CaseCreate, _: None = Depends(verify_token)):
 
 @app.post("/api/chat")
 async def chat(req: ChatRequest, _: None = Depends(verify_token)):
-    cases_result = supabase.table("cases").select("*").eq("status", "active").execute()
-    cases = cases_result.data
+    """Web dashboard chat — routes through the unified Casey agent."""
+    ctx = {"supabase": supabase}
+    response = await process_message(req.message, context=ctx)
+    reply_text, document = _handle_agent_response(response, req.message)
 
-    if cases:
-        cases_context = "\n".join(
-            f"- {c.get('case_name', 'Unknown')} "
-            f"(Type: {c.get('case_type', '')}, "
-            f"Client: {c.get('client_name', '')}, "
-            f"Opposing: {c.get('opposing_party', '')})"
-            for c in cases
-        )
-    else:
-        cases_context = "No active cases."
-
-    # Use the async agent loop — Claude decides whether to reply or use a tool
-    response = await ai_client.chat_agent_loop(req.message, cases_context)
-
-    result = {"reply": response["reply"].strip(), "model": response["model"], "document": None}
-
-    # If Claude used the generate_legal_document tool, build the .docx
-    for tool_call in response.get("tool_calls", []):
-        if tool_call["name"] == "generate_legal_document":
-            try:
-                title = tool_call["input"]["title"]
-                body = tool_call["input"]["body"]
-                filename = build_docx(title, body)
-                result["document"] = {
-                    "filename": filename,
-                    "url": f"/api/documents/{filename}",
-                    "title": title.replace("_", " "),
-                }
-                # Show clean body text in chat if reply was empty (tool-only response)
-                if not result["reply"]:
-                    result["reply"] = body
-            except Exception:
-                pass  # never break chat over a docx failure
-
-    # Fallback: still handle the old DOCUMENT_TITLE: marker for backwards compat
-    if not result["document"] and "DOCUMENT_TITLE:" in result["reply"]:
-        try:
-            fallback = _title_from_message(req.message)
-            title, body = extract_title_and_body(result["reply"], fallback=fallback)
-            filename = build_docx(title, body)
-            result["document"] = {
-                "filename": filename,
-                "url": f"/api/documents/{filename}",
-                "title": title.replace("_", " "),
-            }
-            result["reply"] = body
-        except Exception:
-            pass
-
-    return result
+    return {
+        "response": reply_text,
+        "model": response["model"],
+        "document": document,
+        "session_id": req.session_id,
+    }
 
 
 @app.get("/api/documents/{filename}", include_in_schema=False)
@@ -544,6 +531,250 @@ def serve_outline(filename: str):
     if not filepath.exists():
         raise HTTPException(status_code=404, detail="Outline not found")
     return HTMLResponse(content=filepath.read_text(encoding="utf-8"))
+
+
+# ---------------------------------------------------------------------------
+# Shared agent response handler (used by web chat + messaging channels)
+# ---------------------------------------------------------------------------
+
+
+def _handle_agent_response(response: dict, original_message: str) -> tuple[str, dict | None]:
+    """
+    Post-process agent response: build .docx if a document tool was called,
+    handle DOCUMENT_TITLE: fallback, append download link.
+
+    Returns (reply_text, document_dict_or_None).
+    """
+    reply_text = response["reply"].strip()
+    document = None
+
+    for tool_call in response.get("tool_calls", []):
+        if tool_call["name"] == "generate_legal_document":
+            try:
+                title = tool_call["input"]["title"]
+                body = tool_call["input"]["body"]
+                filename = build_docx(title, body)
+                document = {
+                    "filename": filename,
+                    "url": f"/api/documents/{filename}",
+                    "title": title.replace("_", " "),
+                }
+                if not reply_text:
+                    reply_text = body
+            except Exception:
+                pass
+
+    if not document and "DOCUMENT_TITLE:" in reply_text:
+        try:
+            fallback = _title_from_message(original_message)
+            title, body = extract_title_and_body(reply_text, fallback=fallback)
+            filename = build_docx(title, body)
+            document = {
+                "filename": filename,
+                "url": f"/api/documents/{filename}",
+                "title": title.replace("_", " "),
+            }
+            reply_text = body
+        except Exception:
+            pass
+
+    if document:
+        reply_text += (
+            f"\n\n📄 **Document Ready:** {document['title']}\n"
+            f"Download: {document['url']}"
+        )
+
+    return reply_text, document
+
+
+# ---------------------------------------------------------------------------
+# Telegram webhook
+# ---------------------------------------------------------------------------
+
+
+@app.post("/webhook/telegram")
+async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
+    """
+    Receive Telegram updates via webhook. Processes messages through
+    the Casey agent and replies in-channel.
+    """
+    if not tg_channel.is_configured():
+        raise HTTPException(status_code=503, detail="Telegram not configured")
+
+    try:
+        update = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON")
+
+    parsed = tg_channel.parse_update(update)
+    if not parsed:
+        return {"ok": True}  # Non-message update (e.g., button callback)
+
+    if not tg_channel.is_authorized(parsed["user_id"]):
+        await tg_channel.send_message(
+            parsed["chat_id"],
+            "⛔ You are not authorized to use CaseCommand. "
+            "Contact your administrator to get access.",
+            reply_to=parsed["message_id"],
+        )
+        return {"ok": True}
+
+    # Process in background so Telegram doesn't time out
+    background_tasks.add_task(
+        _process_telegram_message,
+        parsed["chat_id"],
+        parsed["text"],
+        parsed["message_id"],
+    )
+    return {"ok": True}
+
+
+async def _process_telegram_message(chat_id: int, text: str, reply_to: int):
+    """Background task: run agent and reply on Telegram."""
+    try:
+        ctx = {"supabase": supabase}
+        response = await process_message(text, context=ctx)
+        reply_text, document = _handle_agent_response(response, text)
+
+        # Send text reply
+        await tg_channel.send_message(chat_id, reply_text, reply_to=reply_to)
+
+        # If a document was generated, also send the file
+        if document:
+            filepath = DOCUMENTS_DIR / document["filename"]
+            if filepath.exists():
+                await tg_channel.send_document(
+                    chat_id,
+                    str(filepath),
+                    caption=f"📄 {document['title']}",
+                )
+    except Exception as e:
+        logger.error(f"Telegram processing error: {e}")
+        await tg_channel.send_message(
+            chat_id,
+            "⚠️ Sorry, I encountered an error processing your request. Please try again.",
+            reply_to=reply_to,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Twilio webhook (SMS + WhatsApp)
+# ---------------------------------------------------------------------------
+
+
+@app.post("/webhook/twilio")
+async def twilio_webhook(request: Request, background_tasks: BackgroundTasks):
+    """
+    Receive Twilio SMS/WhatsApp webhook callbacks. Processes messages
+    through the Casey agent and replies via Twilio API.
+    """
+    if not tw_channel.is_configured():
+        raise HTTPException(status_code=503, detail="Twilio not configured")
+
+    try:
+        form = await request.form()
+        form_data = dict(form)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid form data")
+
+    parsed = tw_channel.parse_webhook(form_data)
+    if not parsed:
+        return {"ok": True}
+
+    if not tw_channel.is_authorized(parsed["from"]):
+        await tw_channel.send_message(
+            parsed["from"],
+            "⛔ You are not authorized to use CaseCommand.",
+            channel=parsed["channel"],
+        )
+        # Return TwiML empty response
+        return HTMLResponse(
+            content="<Response></Response>",
+            media_type="application/xml",
+        )
+
+    # Process in background
+    background_tasks.add_task(
+        _process_twilio_message,
+        parsed["from"],
+        parsed["body"],
+        parsed["channel"],
+    )
+
+    # Return empty TwiML so Twilio doesn't retry
+    return HTMLResponse(
+        content="<Response></Response>",
+        media_type="application/xml",
+    )
+
+
+async def _process_twilio_message(from_number: str, text: str, channel: str):
+    """Background task: run agent and reply via Twilio SMS/WhatsApp."""
+    try:
+        ctx = {"supabase": supabase}
+        response = await process_message(text, context=ctx)
+        reply_text, document = _handle_agent_response(response, text)
+
+        # For messaging channels, include download URL as full URL if document generated
+        if document:
+            base_url = os.environ.get("BASE_URL", "").rstrip("/")
+            if base_url:
+                reply_text = reply_text.replace(
+                    document["url"],
+                    f"{base_url}{document['url']}",
+                )
+
+        await tw_channel.send_message(from_number, reply_text, channel=channel)
+    except Exception as e:
+        logger.error(f"Twilio processing error: {e}")
+        await tw_channel.send_message(
+            from_number,
+            "⚠️ Sorry, I encountered an error. Please try again.",
+            channel=channel,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Channel setup helpers
+# ---------------------------------------------------------------------------
+
+
+@app.post("/api/channels/telegram/setup")
+async def setup_telegram(_: None = Depends(verify_token)):
+    """Register the Telegram webhook. Call once after deployment."""
+    if not tg_channel.is_configured():
+        raise HTTPException(status_code=400, detail="TELEGRAM_BOT_TOKEN not set")
+    base_url = os.environ.get("BASE_URL", "").rstrip("/")
+    if not base_url:
+        raise HTTPException(
+            status_code=400,
+            detail="BASE_URL env var not set. Set it to your public URL (e.g., https://casecommand.onrender.com)",
+        )
+    result = await tg_channel.set_webhook(f"{base_url}/webhook/telegram")
+    return result
+
+
+@app.get("/api/channels/status")
+def channel_status(_: None = Depends(verify_token)):
+    """Check which messaging channels are configured."""
+    return {
+        "telegram": {
+            "configured": tg_channel.is_configured(),
+            "webhook": "/webhook/telegram",
+        },
+        "twilio_sms": {
+            "configured": tw_channel.is_configured() and bool(tw_channel.TWILIO_PHONE_NUMBER),
+            "webhook": "/webhook/twilio",
+        },
+        "twilio_whatsapp": {
+            "configured": tw_channel.is_configured() and bool(tw_channel.TWILIO_WHATSAPP_NUMBER),
+            "webhook": "/webhook/twilio",
+        },
+        "web": {
+            "configured": True,
+            "endpoint": "/api/chat",
+        },
+    }
 
 
 # ---------------------------------------------------------------------------
