@@ -104,6 +104,21 @@ CREATE POLICY "Users can view their own settlement narratives"
 CREATE POLICY "Users can create settlement narratives"
     ON settlement_narratives FOR INSERT WITH CHECK (auth.uid() = user_id);
 
+-- Conversation messages: persisted chat history across all channels
+CREATE TABLE IF NOT EXISTS conversation_messages (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    session_id TEXT NOT NULL,
+    channel TEXT NOT NULL DEFAULT 'web',  -- web, telegram, sms, whatsapp
+    sender_id TEXT,                        -- Telegram user_id, phone number, etc.
+    role TEXT NOT NULL,                     -- user, assistant
+    content TEXT NOT NULL,
+    metadata JSONB DEFAULT '{}',           -- tool calls, document info, etc.
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_conversation_session
+    ON conversation_messages(session_id, created_at);
+
 -- ============================================================
 -- TRIGGERS
 -- ============================================================
