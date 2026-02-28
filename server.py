@@ -69,6 +69,15 @@ class CaseCreate(BaseModel):
 
 class ChatRequest(BaseModel):
     message: str
+    session_id: str | None = None
+    current_case_id: str | None = None
+
+
+class AIRequest(BaseModel):
+    system: str
+    message: str
+    max_tokens: int = 4096
+    temperature: float = 0.3
 
 
 class DiscoveryRequest(BaseModel):
@@ -237,6 +246,16 @@ def health(_: None = Depends(verify_token)):
     return {"status": "ok", "model": "claude-sonnet-4-6"}
 
 
+@app.post("/api/ai")
+async def ai_generate(req: AIRequest, _: None = Depends(verify_token)):
+    """General-purpose AI endpoint for module features (Meet & Confer, Discovery, etc.)."""
+    try:
+        response = ai_client._call_api(req.system, req.message, max_tokens=req.max_tokens)
+        return {"text": response["text"], "success": True, "usage": response.get("usage", {})}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/api/cases")
 def list_cases(_: None = Depends(verify_token)):
     result = supabase.table("cases").select("*").execute()
@@ -282,7 +301,8 @@ async def chat(req: ChatRequest, _: None = Depends(verify_token)):
     # Use the async agent loop — Claude decides whether to reply or use a tool
     response = await ai_client.chat_agent_loop(req.message, cases_context)
 
-    result = {"reply": response["reply"].strip(), "model": response["model"], "document": None}
+    reply_text = response["reply"].strip()
+    document = None
 
     # If Claude used the generate_legal_document tool, build the .docx
     for tool_call in response.get("tool_calls", []):
@@ -291,33 +311,46 @@ async def chat(req: ChatRequest, _: None = Depends(verify_token)):
                 title = tool_call["input"]["title"]
                 body = tool_call["input"]["body"]
                 filename = build_docx(title, body)
-                result["document"] = {
+                document = {
                     "filename": filename,
                     "url": f"/api/documents/{filename}",
                     "title": title.replace("_", " "),
                 }
                 # Show clean body text in chat if reply was empty (tool-only response)
-                if not result["reply"]:
-                    result["reply"] = body
+                if not reply_text:
+                    reply_text = body
             except Exception:
                 pass  # never break chat over a docx failure
 
     # Fallback: still handle the old DOCUMENT_TITLE: marker for backwards compat
-    if not result["document"] and "DOCUMENT_TITLE:" in result["reply"]:
+    if not document and "DOCUMENT_TITLE:" in reply_text:
         try:
             fallback = _title_from_message(req.message)
-            title, body = extract_title_and_body(result["reply"], fallback=fallback)
+            title, body = extract_title_and_body(reply_text, fallback=fallback)
             filename = build_docx(title, body)
-            result["document"] = {
+            document = {
                 "filename": filename,
                 "url": f"/api/documents/{filename}",
                 "title": title.replace("_", " "),
             }
-            result["reply"] = body
+            reply_text = body
         except Exception:
             pass
 
-    return result
+    # Append download link to the response text when a document was generated
+    if document:
+        reply_text += (
+            f"\n\n📄 **Document Ready:** {document['title']}\n"
+            f"Download: {document['url']}"
+        )
+
+    # Return keys the frontend expects: "response" (not "reply")
+    return {
+        "response": reply_text,
+        "model": response["model"],
+        "document": document,
+        "session_id": req.session_id,
+    }
 
 
 @app.get("/api/documents/{filename}", include_in_schema=False)
