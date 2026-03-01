@@ -577,8 +577,8 @@ ${e.response}`).join("\n---\n")}`,a=await t2(t,r);if(u(!1),a.success){p(a.text);
   function injectNavButtons() {
     const header = document.querySelector('header');
     if (!header || header.dataset.ccInjected) return;
-    const navButtonContainer = header.querySelector('div.flex.items-center > div.flex');
-    const target = navButtonContainer || header.querySelector('div > div:last-child');
+    const headerInner = header.querySelector('div.flex.items-center');
+    const target = headerInner ? headerInner.querySelector(':scope > div:last-child') : header.querySelector('div > div:last-child');
     if (!target) return;
     header.dataset.ccInjected = '1';
 

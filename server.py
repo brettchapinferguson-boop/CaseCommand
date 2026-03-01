@@ -240,7 +240,10 @@ def build_docx(title: str, body: str) -> str:
 def serve_frontend():
     index_path = Path(__file__).parent / "index.html"
     if index_path.exists():
-        return HTMLResponse(content=index_path.read_text(encoding="utf-8"))
+        return HTMLResponse(
+            content=index_path.read_text(encoding="utf-8"),
+            headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+        )
     return HTMLResponse(
         "<h1>CaseCommand</h1><p>Visit <a href='/docs'>/docs</a> for the API.</p>"
     )
