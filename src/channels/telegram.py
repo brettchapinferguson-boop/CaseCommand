@@ -128,6 +128,30 @@ async def set_webhook(webhook_url: str) -> dict:
         return resp.json()
 
 
+async def get_webhook_info() -> dict:
+    """Get current webhook info from Telegram."""
+    if not TELEGRAM_BOT_TOKEN:
+        return {"ok": False, "description": "Bot token not configured"}
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        try:
+            resp = await client.get(f"{TELEGRAM_API}/getWebhookInfo")
+            return resp.json()
+        except Exception as e:
+            return {"ok": False, "description": str(e)}
+
+
+async def get_bot_info() -> dict:
+    """Get bot profile info from Telegram."""
+    if not TELEGRAM_BOT_TOKEN:
+        return {"ok": False}
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        try:
+            resp = await client.get(f"{TELEGRAM_API}/getMe")
+            return resp.json()
+        except Exception as e:
+            return {"ok": False, "description": str(e)}
+
+
 def _split_message(text: str, max_len: int = 4000) -> list[str]:
     """Split a long message into chunks that fit Telegram's limit."""
     if len(text) <= max_len:

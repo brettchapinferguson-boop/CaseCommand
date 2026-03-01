@@ -755,12 +755,32 @@ async def setup_telegram(_: None = Depends(verify_token)):
 
 
 @app.get("/api/channels/status")
-def channel_status(_: None = Depends(verify_token)):
-    """Check which messaging channels are configured."""
+async def channel_status(_: None = Depends(verify_token)):
+    """Check which messaging channels are configured, with live webhook status."""
+    tg_webhook = None
+    tg_bot = None
+    if tg_channel.is_configured():
+        tg_webhook = await tg_channel.get_webhook_info()
+        tg_bot = await tg_channel.get_bot_info()
+
+    webhook_url = ""
+    webhook_active = False
+    if tg_webhook and tg_webhook.get("ok"):
+        result = tg_webhook.get("result", {})
+        webhook_url = result.get("url", "")
+        webhook_active = bool(webhook_url)
+
+    bot_username = ""
+    if tg_bot and tg_bot.get("ok"):
+        bot_username = tg_bot.get("result", {}).get("username", "")
+
     return {
         "telegram": {
             "configured": tg_channel.is_configured(),
             "webhook": "/webhook/telegram",
+            "webhook_url": webhook_url,
+            "webhook_active": webhook_active,
+            "bot_username": bot_username,
         },
         "twilio_sms": {
             "configured": tw_channel.is_configured() and bool(tw_channel.TWILIO_PHONE_NUMBER),

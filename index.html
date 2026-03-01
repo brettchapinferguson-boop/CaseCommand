@@ -247,6 +247,49 @@ ${e.response}`).join("\n---\n")}`,a=await t2(t,r);if(u(!1),a.success){p(a.text);
 }
 .cc-int-btn:hover { border-color: #2f81f7; color: #2f81f7; }
 
+/* Messaging Channels */
+.cc-ch-section { margin-bottom: 28px; }
+.cc-ch-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+@media (max-width: 768px) { .cc-ch-grid { grid-template-columns: 1fr; } }
+.cc-ch-card {
+  background: #0d1117; border: 1px solid #30363d; border-radius: 10px;
+  padding: 18px; position: relative; transition: border-color .2s, box-shadow .2s;
+}
+.cc-ch-card.active { border-color: #238636; box-shadow: 0 0 12px #23863622; }
+.cc-ch-card.pending { border-color: #d29922; box-shadow: 0 0 12px #d2992222; }
+.cc-ch-hdr { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.cc-ch-icon { font-size: 26px; }
+.cc-ch-name { font-size: 15px; font-weight: 700; color: #e6edf3; }
+.cc-ch-dot {
+  width: 10px; height: 10px; border-radius: 50%; margin-left: auto;
+  display: inline-block; flex-shrink: 0;
+}
+.cc-ch-dot.green { background: #3fb950; box-shadow: 0 0 8px #3fb95088; }
+.cc-ch-dot.yellow { background: #d29922; box-shadow: 0 0 8px #d2992288; }
+.cc-ch-dot.red { background: #f85149; }
+.cc-ch-dot.gray { background: #484f58; }
+.cc-ch-dot.pulse { animation: cc-pulse 1.5s infinite; }
+@keyframes cc-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .4; } }
+.cc-ch-status { font-size: 11px; color: #8b949e; margin-bottom: 14px; min-height: 28px; line-height: 1.4; }
+.cc-ch-status .cc-ch-bot { color: #58a6ff; font-weight: 500; }
+.cc-ch-actions { display: flex; gap: 8px; }
+.cc-ch-btn {
+  flex: 1; padding: 8px 12px; border-radius: 6px; border: 1px solid #30363d;
+  background: transparent; color: #8b949e; cursor: pointer; font-size: 12px;
+  font-weight: 500; transition: all .15s; font-family: inherit; text-align: center;
+}
+.cc-ch-btn:hover { border-color: #2f81f7; color: #2f81f7; }
+.cc-ch-btn.primary { background: #238636; border-color: #238636; color: #fff; }
+.cc-ch-btn.primary:hover { opacity: .85; border-color: #238636; color: #fff; }
+.cc-ch-btn.connected { background: #0d1117; border-color: #238636; color: #3fb950; cursor: default; }
+.cc-ch-btn:disabled { opacity: .4; cursor: default; }
+.cc-ch-label {
+  display: inline-block; font-size: 9px; font-weight: 700; letter-spacing: .6px;
+  padding: 2px 7px; border-radius: 4px; text-transform: uppercase; margin-left: 8px;
+}
+.cc-ch-label.live { background: #23863633; color: #3fb950; }
+.cc-ch-label.soon { background: #d2992233; color: #d29922; }
+
 /* TrialOutline Pro */
 .cc-outline-layout { display: flex; flex: 1; overflow: hidden; }
 .cc-outline-form {
@@ -352,6 +395,51 @@ ${e.response}`).join("\n---\n")}`,a=await t2(t,r);if(u(!1),a.success){p(a.text);
       <button class="cc-close-btn" onclick="ccCloseInt()">✕ Close</button>
     </div>
     <div class="cc-panel-body">
+      <!-- Messaging Channels — Live -->
+      <div class="cc-ch-section">
+        <div class="cc-int-section-title" style="margin-top:0">
+          💬 Messaging Channels <span class="cc-ch-label live">LIVE</span>
+        </div>
+        <div class="cc-ch-grid" id="cc-channels-grid">
+          <!-- Telegram -->
+          <div class="cc-ch-card" id="cc-ch-telegram">
+            <div class="cc-ch-hdr">
+              <span class="cc-ch-icon">✈️</span>
+              <span class="cc-ch-name">Telegram</span>
+              <span class="cc-ch-dot gray pulse" id="cc-ch-tg-dot"></span>
+            </div>
+            <div class="cc-ch-status" id="cc-ch-tg-status">Checking connection...</div>
+            <div class="cc-ch-actions">
+              <button class="cc-ch-btn" id="cc-ch-tg-btn" onclick="ccTelegramAction()" disabled>Checking...</button>
+            </div>
+          </div>
+          <!-- SMS -->
+          <div class="cc-ch-card" id="cc-ch-sms">
+            <div class="cc-ch-hdr">
+              <span class="cc-ch-icon">📱</span>
+              <span class="cc-ch-name">SMS</span>
+              <span class="cc-ch-dot gray" id="cc-ch-sms-dot"></span>
+            </div>
+            <div class="cc-ch-status" id="cc-ch-sms-status">Twilio SMS integration</div>
+            <div class="cc-ch-actions">
+              <button class="cc-ch-btn" id="cc-ch-sms-btn" disabled>Configure</button>
+            </div>
+          </div>
+          <!-- WhatsApp -->
+          <div class="cc-ch-card" id="cc-ch-whatsapp">
+            <div class="cc-ch-hdr">
+              <span class="cc-ch-icon">💬</span>
+              <span class="cc-ch-name">WhatsApp</span>
+              <span class="cc-ch-dot gray" id="cc-ch-wa-dot"></span>
+            </div>
+            <div class="cc-ch-status" id="cc-ch-wa-status">WhatsApp Business via Twilio</div>
+            <div class="cc-ch-actions">
+              <button class="cc-ch-btn" id="cc-ch-wa-btn" disabled>Configure</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div class="cc-workflow-banner">
         <div class="cc-workflow-title">⚡ What Integrations Enable</div>
         <div class="cc-workflow-steps">
@@ -473,7 +561,7 @@ ${e.response}`).join("\n---\n")}`,a=await t2(t,r);if(u(!1),a.success){p(a.text);
 <script>
 (function() {
   // ── Panel controls ──────────────────────────────────────────────────────
-  window.ccOpenInt     = () => document.getElementById('cc-int-overlay').style.display = 'flex';
+  window.ccOpenInt     = () => { document.getElementById('cc-int-overlay').style.display = 'flex'; ccCheckChannelStatus(); };
   window.ccCloseInt    = () => document.getElementById('cc-int-overlay').style.display = 'none';
   window.ccOpenOutline = () => document.getElementById('cc-outline-overlay').style.display = 'flex';
   window.ccCloseOutline= () => document.getElementById('cc-outline-overlay').style.display = 'none';
@@ -526,6 +614,149 @@ ${e.response}`).join("\n---\n")}`,a=await t2(t,r);if(u(!1),a.success){p(a.text);
 
   // ── Integrations toast ──────────────────────────────────────────────────
   window.ccIntToast = (name) => ccToast(name + ' integration — coming soon! We\'ll notify you when it\'s ready.');
+
+  // ── Channel Management ──────────────────────────────────────────────────
+  let _ccChannelData = null;
+  let _ccChannelLoading = false;
+
+  window.ccCheckChannelStatus = async function() {
+    if (_ccChannelLoading) return;
+    _ccChannelLoading = true;
+    try {
+      const res = await fetch('/api/channels/status');
+      if (!res.ok) throw new Error(res.status + ' ' + res.statusText);
+      _ccChannelData = await res.json();
+      _ccRenderChannels();
+    } catch(e) {
+      console.error('Channel status error:', e);
+      document.getElementById('cc-ch-tg-status').textContent = 'Unable to reach server';
+      document.getElementById('cc-ch-tg-dot').className = 'cc-ch-dot red';
+      document.getElementById('cc-ch-tg-btn').textContent = 'Retry';
+      document.getElementById('cc-ch-tg-btn').disabled = false;
+      document.getElementById('cc-ch-tg-btn').onclick = () => { _ccChannelLoading = false; ccCheckChannelStatus(); };
+    } finally {
+      _ccChannelLoading = false;
+    }
+  };
+
+  function _ccRenderChannels() {
+    if (!_ccChannelData) return;
+
+    // ─── Telegram ───
+    const tg = _ccChannelData.telegram || {};
+    const tgDot = document.getElementById('cc-ch-tg-dot');
+    const tgStatus = document.getElementById('cc-ch-tg-status');
+    const tgBtn = document.getElementById('cc-ch-tg-btn');
+    const tgCard = document.getElementById('cc-ch-telegram');
+
+    tgDot.classList.remove('pulse');
+
+    if (tg.configured && tg.webhook_active) {
+      tgDot.className = 'cc-ch-dot green';
+      const botTag = tg.bot_username ? ' <span class="cc-ch-bot">@' + ccEsc(tg.bot_username) + '</span>' : '';
+      tgStatus.innerHTML = 'Connected and active' + botTag + '<br>Webhook: ' + ccEsc(tg.webhook_url || '').replace(/^https?:\/\//, '').slice(0, 45) + '...';
+      tgBtn.textContent = '✓ Connected';
+      tgBtn.className = 'cc-ch-btn connected';
+      tgBtn.disabled = false;
+      tgBtn.onclick = () => ccToast('Telegram is connected and receiving messages!');
+      tgCard.className = 'cc-ch-card active';
+    } else if (tg.configured && !tg.webhook_active) {
+      tgDot.className = 'cc-ch-dot yellow';
+      const botTag = tg.bot_username ? ' <span class="cc-ch-bot">@' + ccEsc(tg.bot_username) + '</span>' : '';
+      tgStatus.innerHTML = 'Bot token set' + botTag + '<br>Webhook not registered — click to activate';
+      tgBtn.textContent = '⚡ Activate Webhook';
+      tgBtn.className = 'cc-ch-btn primary';
+      tgBtn.disabled = false;
+      tgBtn.onclick = ccTelegramSetup;
+      tgCard.className = 'cc-ch-card pending';
+    } else {
+      tgDot.className = 'cc-ch-dot red';
+      tgStatus.innerHTML = 'Not configured<br>Set TELEGRAM_BOT_TOKEN in Render environment';
+      tgBtn.textContent = 'Not Configured';
+      tgBtn.className = 'cc-ch-btn';
+      tgBtn.disabled = true;
+      tgCard.className = 'cc-ch-card';
+    }
+
+    // ─── SMS ───
+    const sms = _ccChannelData.twilio_sms || {};
+    const smsDot = document.getElementById('cc-ch-sms-dot');
+    const smsStatus = document.getElementById('cc-ch-sms-status');
+    const smsBtn = document.getElementById('cc-ch-sms-btn');
+    const smsCard = document.getElementById('cc-ch-sms');
+
+    if (sms.configured) {
+      smsDot.className = 'cc-ch-dot green';
+      smsStatus.textContent = 'Connected — Twilio SMS active';
+      smsBtn.textContent = '✓ Connected';
+      smsBtn.className = 'cc-ch-btn connected';
+      smsCard.className = 'cc-ch-card active';
+    } else {
+      smsDot.className = 'cc-ch-dot gray';
+      smsStatus.textContent = 'Requires Twilio account and phone number';
+      smsBtn.textContent = 'Configure';
+      smsBtn.disabled = true;
+    }
+
+    // ─── WhatsApp ───
+    const wa = _ccChannelData.twilio_whatsapp || {};
+    const waDot = document.getElementById('cc-ch-wa-dot');
+    const waStatus = document.getElementById('cc-ch-wa-status');
+    const waBtn = document.getElementById('cc-ch-wa-btn');
+    const waCard = document.getElementById('cc-ch-whatsapp');
+
+    if (wa.configured) {
+      waDot.className = 'cc-ch-dot green';
+      waStatus.textContent = 'Connected — WhatsApp Business active';
+      waBtn.textContent = '✓ Connected';
+      waBtn.className = 'cc-ch-btn connected';
+      waCard.className = 'cc-ch-card active';
+    } else {
+      waDot.className = 'cc-ch-dot gray';
+      waStatus.textContent = 'Requires Twilio WhatsApp Business setup';
+      waBtn.textContent = 'Configure';
+      waBtn.disabled = true;
+    }
+  }
+
+  window.ccTelegramAction = function() {
+    if (!_ccChannelData) { _ccChannelLoading = false; ccCheckChannelStatus(); return; }
+    if (_ccChannelData.telegram && _ccChannelData.telegram.configured) {
+      if (_ccChannelData.telegram.webhook_active) {
+        ccToast('Telegram is already connected!');
+      } else {
+        ccTelegramSetup();
+      }
+    } else {
+      ccToast('Set TELEGRAM_BOT_TOKEN in your Render environment first', true);
+    }
+  };
+
+  window.ccTelegramSetup = async function() {
+    const btn = document.getElementById('cc-ch-tg-btn');
+    const tgDot = document.getElementById('cc-ch-tg-dot');
+    btn.disabled = true;
+    btn.textContent = '⏳ Registering webhook...';
+    tgDot.className = 'cc-ch-dot yellow pulse';
+    try {
+      const res = await fetch('/api/channels/telegram/setup', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Setup failed');
+      if (data.ok) {
+        ccToast('Telegram webhook registered! Bot is now live.');
+        _ccChannelLoading = false;
+        await ccCheckChannelStatus();
+      } else {
+        throw new Error(data.description || 'Telegram API rejected the webhook');
+      }
+    } catch(e) {
+      ccToast('Webhook error: ' + e.message, true);
+      btn.textContent = '⚡ Retry Setup';
+      btn.className = 'cc-ch-btn primary';
+      btn.disabled = false;
+      tgDot.className = 'cc-ch-dot yellow';
+    }
+  };
 
   // ── TrialOutline Pro ────────────────────────────────────────────────────
   window.ccGenerateOutline = async function() {
