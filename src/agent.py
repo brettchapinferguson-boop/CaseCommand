@@ -3,22 +3,26 @@ CaseCommand — Unified Agent Engine
 
 Single agent loop that processes messages from any channel (web, Telegram,
 WhatsApp/SMS) and routes through the same Casey persona + tool set.
+
+Multi-tenant: uses firm_config from context to personalize the system prompt
+for each organization.
 """
 
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 
 import httpx
 
+from src.config import get_settings
+
 
 def _load_soul() -> str:
     """Load SOUL.md from project root as the base system prompt."""
-    soul_path = Path(__file__).parent.parent / "SOUL.md"
-    if soul_path.exists():
-        return soul_path.read_text(encoding="utf-8")
+    settings = get_settings()
+    if settings.SOUL_PATH.exists():
+        return settings.SOUL_PATH.read_text(encoding="utf-8")
     return (
         "You are Casey, the lead litigation assistant for CaseCommand. "
         "You act as an expert trial attorney and elite paralegal."
@@ -26,9 +30,6 @@ def _load_soul() -> str:
 
 
 SOUL = _load_soul()
-
-MODEL = os.environ.get("CLAUDE_MODEL", "claude-sonnet-4-6")
-BASE_URL = "https://api.anthropic.com/v1"
 
 # ---------------------------------------------------------------------------
 # Tool definitions — everything Casey can do
@@ -123,45 +124,91 @@ TOOLS = [
 
 
 # ---------------------------------------------------------------------------
+# Multi-tenant system prompt builder
+# ---------------------------------------------------------------------------
+
+
+def _build_system_prompt(firm_config: dict | None = None) -> str:
+    """
+    Build a tenant-specific system prompt.
+
+    If firm_config is provided, overrides the default SOUL.md firm details.
+    This allows each law firm to have their own identity in Casey's responses.
+    """
+    if not firm_config:
+        return SOUL
+
+    firm_name = firm_config.get("firm_name", "")
+    attorney_name = firm_config.get("attorney_name", "")
+    bar_number = firm_config.get("bar_number", "")
+    jurisdiction = firm_config.get("jurisdiction", "California")
+    firm_address = firm_config.get("firm_address", "")
+    court_formatting = firm_config.get("court_formatting", "")
+
+    firm_section = ""
+    if firm_name or attorney_name:
+        firm_section = f"""
+
+## Firm Identity (This Session)
+- Firm: {firm_name}
+- Attorney: {attorney_name}{'  (SBN ' + bar_number + ')' if bar_number else ''}
+- Jurisdiction: {jurisdiction}
+{f'- Address: {firm_address}' if firm_address else ''}
+{f'- Court Formatting: {court_formatting}' if court_formatting else ''}
+
+When drafting documents, use this firm's identity in headers and signature blocks.
+"""
+
+    base = SOUL
+    if "Brett Ferguson" in base and firm_name:
+        base = base.replace(
+            "Brett Ferguson\n(SBN 281519), Law Office of Brett Ferguson, Long Beach, California",
+            f"{attorney_name}, {firm_name}",
+        )
+        base = base.replace(
+            "Brett Ferguson (SBN 281519), Law Office of Brett Ferguson,\n  Long Beach, CA",
+            f"{attorney_name}{' (SBN ' + bar_number + ')' if bar_number else ''}, {firm_name}",
+        )
+
+    return base + firm_section
+
+
+# ---------------------------------------------------------------------------
 # HTTP helpers
 # ---------------------------------------------------------------------------
 
 
 def _get_headers() -> dict:
-    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    settings = get_settings()
     return {
-        "x-api-key": api_key,
+        "x-api-key": settings.ANTHROPIC_API_KEY,
         "anthropic-version": "2023-06-01",
         "content-type": "application/json",
     }
 
 
-def _get_proxy() -> str | None:
-    p = (
-        os.environ.get("HTTPS_PROXY")
-        or os.environ.get("https_proxy")
-        or os.environ.get("HTTP_PROXY")
-        or os.environ.get("http_proxy")
-    )
-    return p if p and not p.startswith("socks") else None
-
-
-async def _call_claude(messages: list, tools: list | None = None, max_tokens: int = 4096) -> dict:
+async def _call_claude(
+    messages: list,
+    tools: list | None = None,
+    max_tokens: int = 4096,
+    system_prompt: str | None = None,
+) -> dict:
     """Single async call to the Anthropic Messages API."""
+    settings = get_settings()
     payload: dict = {
-        "model": MODEL,
+        "model": settings.CLAUDE_MODEL,
         "max_tokens": max_tokens,
-        "system": SOUL,
+        "system": system_prompt or SOUL,
         "messages": messages,
     }
     if tools:
         payload["tools"] = tools
 
     async with httpx.AsyncClient(
-        timeout=120.0, trust_env=False, proxy=_get_proxy()
+        timeout=120.0, trust_env=False, proxy=settings.get_proxy()
     ) as client:
         resp = await client.post(
-            f"{BASE_URL}/messages",
+            f"{settings.ANTHROPIC_BASE_URL}/messages",
             headers=_get_headers(),
             json=payload,
         )
@@ -175,16 +222,11 @@ async def _call_claude(messages: list, tools: list | None = None, max_tokens: in
 
 
 async def _execute_tool(name: str, input_data: dict, context: dict) -> dict:
-    """
-    Execute a tool and return its result.
-
-    `context` carries objects the tools may need (supabase client, etc.).
-    """
+    """Execute a tool and return its result."""
     supabase = context.get("supabase")
+    org_id = context.get("org_id")
 
     if name == "generate_legal_document":
-        # The actual docx build happens in server.py after we return the tool call.
-        # Here we just confirm the tool was invoked so the agent loop returns it.
         return {
             "status": "success",
             "message": f"Document '{input_data['title']}' generated successfully.",
@@ -193,13 +235,16 @@ async def _execute_tool(name: str, input_data: dict, context: dict) -> dict:
     if name == "lookup_case":
         if not supabase:
             return {"status": "error", "message": "Database not available."}
-        query = input_data.get("query", "").lower()
-        result = supabase.table("cases").select("*").eq("status", "active").execute()
+        query_text = input_data.get("query", "").lower()
+        q = supabase.table("cases").select("*").eq("status", "active")
+        if org_id:
+            q = q.eq("org_id", org_id)
+        result = q.execute()
         matches = [
             c for c in (result.data or [])
-            if query in (c.get("case_name") or "").lower()
-            or query in (c.get("client_name") or "").lower()
-            or query in (c.get("case_type") or "").lower()
+            if query_text in (c.get("case_name") or "").lower()
+            or query_text in (c.get("client_name") or "").lower()
+            or query_text in (c.get("case_type") or "").lower()
         ]
         if matches:
             return {"status": "success", "cases": matches}
@@ -208,13 +253,10 @@ async def _execute_tool(name: str, input_data: dict, context: dict) -> dict:
     if name == "list_deadlines":
         if not supabase:
             return {"status": "error", "message": "Database not available."}
-        result = (
-            supabase.table("cases")
-            .select("*")
-            .eq("status", "active")
-            .order("created_at", desc=False)
-            .execute()
-        )
+        q = supabase.table("cases").select("*").eq("status", "active").order("created_at", desc=False)
+        if org_id:
+            q = q.eq("org_id", org_id)
+        result = q.execute()
         return {"status": "success", "cases": result.data or []}
 
     if name == "create_case":
@@ -226,6 +268,10 @@ async def _execute_tool(name: str, input_data: dict, context: dict) -> dict:
             "client_name": input_data["client_name"],
             "opposing_party": input_data["opposing_party"],
         }
+        if org_id:
+            data["org_id"] = org_id
+        if context.get("user_id"):
+            data["user_id"] = context["user_id"]
         result = supabase.table("cases").insert(data).execute()
         return {"status": "success", "case": result.data[0] if result.data else data}
 
@@ -249,24 +295,33 @@ async def process_message(
     Args:
         user_message: The text from the user.
         conversation_history: Optional prior messages for multi-turn context.
-        context: Dict with 'supabase' client and any other dependencies.
+        context: Dict with 'supabase' client, 'org_id', 'firm_config', etc.
 
     Returns:
         {
-            "reply": str,           # Text reply for the user
-            "tool_calls": list,     # Any tool invocations (for server-side handling)
+            "reply": str,
+            "tool_calls": list,
             "model": str,
+            "usage": dict,
         }
     """
     ctx = context or {}
     messages = list(conversation_history or [])
     messages.append({"role": "user", "content": user_message})
 
-    # Inject active cases context into the conversation
+    # Build tenant-specific system prompt
+    firm_config = ctx.get("firm_config")
+    system_prompt = _build_system_prompt(firm_config)
+
+    # Inject active cases context
     supabase = ctx.get("supabase")
+    org_id = ctx.get("org_id")
     if supabase:
         try:
-            cases_result = supabase.table("cases").select("*").eq("status", "active").execute()
+            q = supabase.table("cases").select("*").eq("status", "active")
+            if org_id:
+                q = q.eq("org_id", org_id)
+            cases_result = q.execute()
             cases = cases_result.data or []
             if cases:
                 cases_ctx = "\n".join(
@@ -283,8 +338,6 @@ async def process_message(
     else:
         cases_ctx = "Database not connected."
 
-    # Prepend cases context as a system-injected user message if this is the
-    # first message in the conversation
     if len(messages) == 1:
         messages.insert(0, {
             "role": "user",
@@ -298,9 +351,11 @@ async def process_message(
     # --- Agent loop: call Claude, handle tool use, repeat ---
     max_iterations = 5
     all_tool_calls: list[dict] = []
+    reply_text = ""
+    data = {}
 
     for _ in range(max_iterations):
-        data = await _call_claude(messages, tools=TOOLS)
+        data = await _call_claude(messages, tools=TOOLS, system_prompt=system_prompt)
         content_blocks = data.get("content", [])
         stop_reason = data.get("stop_reason", "end_turn")
 
@@ -314,18 +369,15 @@ async def process_message(
                 tool_uses.append(block)
 
         if not tool_uses or stop_reason != "tool_use":
-            # No tools invoked — return the text reply
             return {
                 "reply": reply_text.strip(),
                 "tool_calls": all_tool_calls,
-                "model": data.get("model", MODEL),
+                "model": data.get("model", get_settings().CLAUDE_MODEL),
+                "usage": data.get("usage", {}),
             }
 
-        # Claude wants to use tools — execute them and loop
-        # First, add Claude's response (with tool_use blocks) to messages
         messages.append({"role": "assistant", "content": content_blocks})
 
-        # Execute each tool and build the tool_result message
         tool_results = []
         for tu in tool_uses:
             tool_call_record = {
@@ -335,7 +387,6 @@ async def process_message(
             }
             all_tool_calls.append(tool_call_record)
 
-            # generate_legal_document is handled post-loop by the server
             if tu["name"] == "generate_legal_document":
                 result = {
                     "status": "success",
@@ -352,9 +403,9 @@ async def process_message(
 
         messages.append({"role": "user", "content": tool_results})
 
-    # Fallback if we exhaust iterations
     return {
         "reply": reply_text.strip() if reply_text else "I encountered a complex request. Could you try rephrasing?",
         "tool_calls": all_tool_calls,
-        "model": data.get("model", MODEL),
+        "model": data.get("model", get_settings().CLAUDE_MODEL),
+        "usage": data.get("usage", {}),
     }

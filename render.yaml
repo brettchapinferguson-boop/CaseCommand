@@ -11,9 +11,24 @@ services:
         sync: false
       - key: SUPABASE_SECRET_KEY
         sync: false
+      - key: SUPABASE_JWT_SECRET
+        sync: false
       - key: PYTHON_VERSION
         value: 3.11.11
       - key: BASE_URL
+        sync: false
+      - key: AUTH_TOKEN
+        sync: false
+      # Stripe billing
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: STRIPE_PRICE_SOLO
+        sync: false
+      - key: STRIPE_PRICE_FIRM
+        sync: false
+      - key: STRIPE_PRICE_ENTERPRISE
         sync: false
       # Telegram (optional)
       - key: TELEGRAM_BOT_TOKEN

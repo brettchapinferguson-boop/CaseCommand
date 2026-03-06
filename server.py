@@ -1,882 +1,412 @@
 """
-CaseCommand Server — FastAPI app on port 3000
+CaseCommand Server — FastAPI Application Factory
 
 Unified gateway for web dashboard, Telegram, WhatsApp, and SMS channels.
 All channels route through the same Casey agent (src/agent.py).
+
+Modular architecture:
+  - src/routes/       — API route modules
+  - src/auth/         — JWT authentication
+  - src/billing/      — Stripe integration
+  - src/storage/      — Document generation & storage
+  - src/middleware/    — Rate limiting, usage tracking
+  - src/channels/     — Telegram, Twilio adapters
+  - src/agent.py      — Unified AI agent engine
+  - src/config.py     — Centralized configuration
 """
 
-import os
-import re
-import json
-import uuid
 import logging
 from pathlib import Path
-from dotenv import load_dotenv
 
-load_dotenv()
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from supabase import create_client
 
-from fastapi import FastAPI, HTTPException, Depends, Security, Request, BackgroundTasks
-from fastapi.responses import FileResponse, HTMLResponse
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from pydantic import BaseModel
-from supabase import create_client, Client
-from docx import Document as DocxDocument
-from docx.shared import Pt, Inches, RGBColor
-from docx.enum.text import WD_ALIGN_PARAGRAPH
-import uvicorn
-
+from src.config import get_settings
 from src.api_client import CaseCommandAI
-from src.agent import process_message
-from src.channels import telegram as tg_channel
-from src.channels import twilio as tw_channel
+from src.storage.documents import DocumentStore
+from src.middleware.rate_limit import limiter
+from src.middleware.usage import UsageTracker
+from src.billing.stripe_service import StripeService
+
+# Route modules
+from src.routes import (
+    auth_routes,
+    case_routes,
+    chat_routes,
+    ai_routes,
+    document_routes,
+    billing_routes,
+    channel_routes,
+    agent_lab_routes,
+)
 
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="CaseCommand API")
 
-SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
-SUPABASE_SECRET_KEY = os.environ.get("SUPABASE_SECRET_KEY", "") or os.environ.get("SUPABASE_SERVICE_KEY", "") or os.environ.get("SUPABASE_KEY", "")
-AUTH_TOKEN = os.environ.get("AUTH_TOKEN", "")
+def create_app() -> FastAPI:
+    """Application factory — creates and configures the FastAPI app."""
+    settings = get_settings()
 
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_SECRET_KEY)
-ai_client = CaseCommandAI()
+    # Validate critical config
+    missing = settings.validate_required()
+    if missing:
+        logger.warning("Missing env vars: %s", ", ".join(missing))
 
-# ---------------------------------------------------------------------------
-# Document storage
-# ---------------------------------------------------------------------------
-
-DOCUMENTS_DIR = Path(__file__).parent / "documents"
-DOCUMENTS_DIR.mkdir(exist_ok=True)
-
-OUTLINES_DIR = Path(__file__).parent / "outlines"
-OUTLINES_DIR.mkdir(exist_ok=True)
-
-# ---------------------------------------------------------------------------
-# Auth
-# ---------------------------------------------------------------------------
-
-security = HTTPBearer(auto_error=False)
-
-
-def verify_token(credentials: HTTPAuthorizationCredentials = Security(security)):
-    if not AUTH_TOKEN:
-        return
-    if not credentials or credentials.credentials != AUTH_TOKEN:
-        raise HTTPException(status_code=401, detail="Invalid or missing token")
-
-
-# ---------------------------------------------------------------------------
-# Pydantic models
-# ---------------------------------------------------------------------------
-
-
-class CaseCreate(BaseModel):
-    name: str
-    type: str
-    client: str
-    opposing: str
-
-
-class ChatRequest(BaseModel):
-    message: str
-    session_id: str | None = None
-    current_case_id: str | None = None
-
-
-class AIRequest(BaseModel):
-    system: str
-    message: str
-    max_tokens: int = 4096
-    temperature: float = 0.3
-
-
-class DiscoveryRequest(BaseModel):
-    case_name: str
-    discovery_type: str
-    requests_and_responses: list
-
-
-class SettlementRequest(BaseModel):
-    case_name: str
-    trigger_point: str
-    valuation_data: dict
-    recommendation_data: dict
-
-
-class OutlineRequest(BaseModel):
-    case_name: str
-    witness_name: str
-    witness_role: str = "witness"
-    exam_type: str = "cross"
-    case_theory: str = ""
-    documents: list = []
-
-
-# ---------------------------------------------------------------------------
-# Document generation helpers
-# ---------------------------------------------------------------------------
-
-DOCUMENT_TRIGGER_WORDS = [
-    "draft", "write", "prepare", "create a", "generate a", "compose",
-    "produce", "draw up",
-]
-DOCUMENT_TYPE_WORDS = [
-    "letter", "motion", "complaint", "demand", "agreement", "memo",
-    "memorandum", "notice", "brief", "contract", "pleading", "declaration",
-    "affidavit", "stipulation", "subpoena", "order", "outline", "response",
-    "meet and confer", "m&c",
-]
-
-DOCUMENT_FORMAT_INSTRUCTIONS = (
-    "\n\nIMPORTANT: When drafting any legal document (letter, motion, memo, "
-    "demand letter, complaint, agreement, etc.), begin your response with this "
-    "exact line:\n"
-    "DOCUMENT_TITLE: [short descriptive title, e.g. Meet_and_Confer_Letter_Rodriguez]\n"
-    "Then provide the full document text. This allows the system to automatically "
-    "create a downloadable Word file for the attorney.\n\n"
-)
-
-
-def is_document_request(message: str) -> bool:
-    msg = message.lower()
-    has_action = any(kw in msg for kw in DOCUMENT_TRIGGER_WORDS)
-    has_doc_type = any(dt in msg for dt in DOCUMENT_TYPE_WORDS)
-    return has_action and has_doc_type
-
-
-def _title_from_message(message: str) -> str:
-    """Derive a safe document filename from the user's request."""
-    skip = {"a", "an", "the", "for", "of", "in", "to", "me", "us", "please", "can", "you"}
-    words = [w.capitalize() for w in message.split() if w.lower() not in skip]
-    return "_".join(words[:6]) or "Legal_Document"
-
-
-def extract_title_and_body(text: str, fallback: str = "Legal_Document") -> tuple[str, str]:
-    """Return (title, body) — strips the DOCUMENT_TITLE line wherever it appears."""
-    lines = text.strip().split("\n")
-    for i, line in enumerate(lines):
-        if line.strip().startswith("DOCUMENT_TITLE:"):
-            title = line.replace("DOCUMENT_TITLE:", "").strip()
-            body = "\n".join(lines[:i] + lines[i + 1:]).lstrip("\n")
-            return title, body
-    return fallback, text
-
-
-def _add_run_with_text(para, text: str):
-    """Add a run to a paragraph, applying bold for **...**-wrapped segments."""
-    parts = re.split(r"(\*\*[^*]+\*\*)", text)
-    for part in parts:
-        if part.startswith("**") and part.endswith("**"):
-            run = para.add_run(part[2:-2])
-            run.bold = True
-        else:
-            para.add_run(part)
-    for run in para.runs:
-        run.font.name = "Times New Roman"
-        run.font.size = Pt(12)
-
-
-def build_docx(title: str, body: str) -> str:
-    """Convert title + body text into a formatted .docx file. Returns filename."""
-    doc = DocxDocument()
-
-    # Page margins: 1.25" left/right, 1" top/bottom (standard legal)
-    for section in doc.sections:
-        section.top_margin = Inches(1.0)
-        section.bottom_margin = Inches(1.0)
-        section.left_margin = Inches(1.25)
-        section.right_margin = Inches(1.25)
-
-    # Title
-    title_para = doc.add_paragraph()
-    title_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    title_run = title_para.add_run(title.replace("_", " "))
-    title_run.bold = True
-    title_run.font.name = "Times New Roman"
-    title_run.font.size = Pt(14)
-    doc.add_paragraph()  # blank spacer
-
-    # Body — handle markdown-style headings and bold
-    for line in body.split("\n"):
-        stripped = line.rstrip()
-
-        if not stripped:
-            doc.add_paragraph()
-            continue
-
-        if stripped.startswith("### "):
-            h = doc.add_heading(stripped[4:], level=3)
-            for run in h.runs:
-                run.font.name = "Times New Roman"
-            continue
-
-        if stripped.startswith("## "):
-            h = doc.add_heading(stripped[3:], level=2)
-            for run in h.runs:
-                run.font.name = "Times New Roman"
-            continue
-
-        if stripped.startswith("# "):
-            h = doc.add_heading(stripped[2:], level=1)
-            for run in h.runs:
-                run.font.name = "Times New Roman"
-            continue
-
-        para = doc.add_paragraph()
-        _add_run_with_text(para, stripped)
-
-    safe = re.sub(r"[^\w\s-]", "", title).strip().replace(" ", "_")[:50]
-    filename = f"{safe}_{uuid.uuid4().hex[:6]}.docx"
-    doc.save(str(DOCUMENTS_DIR / filename))
-    return filename
-
-
-# ---------------------------------------------------------------------------
-# Frontend
-# ---------------------------------------------------------------------------
-
-
-@app.get("/", include_in_schema=False)
-def serve_frontend():
-    index_path = Path(__file__).parent / "index.html"
-    if index_path.exists():
-        return HTMLResponse(content=index_path.read_text(encoding="utf-8"))
-    return HTMLResponse(
-        "<h1>CaseCommand</h1><p>Visit <a href='/docs'>/docs</a> for the API.</p>"
+    app = FastAPI(
+        title="CaseCommand API",
+        version="2.0.0",
+        docs_url="/docs" if settings.DEBUG else None,
+        redoc_url=None,
     )
 
+    # --- CORS ---
+    allowed_origins = [
+        settings.BASE_URL,
+        "http://localhost:3000",
+        "http://localhost:5173",
+    ]
+    # Filter out empty strings
+    allowed_origins = [o for o in allowed_origins if o]
 
-# ---------------------------------------------------------------------------
-# Endpoints
-# ---------------------------------------------------------------------------
-
-
-@app.get("/api/health")
-def health(_: None = Depends(verify_token)):
-    return {"status": "ok", "model": "claude-sonnet-4-6"}
-
-
-@app.post("/api/ai")
-async def ai_generate(req: AIRequest, _: None = Depends(verify_token)):
-    """General-purpose AI endpoint for module features (Meet & Confer, Discovery, etc.)."""
-    try:
-        response = ai_client._call_api(req.system, req.message, max_tokens=req.max_tokens)
-        return {"text": response["text"], "success": True, "usage": response.get("usage", {})}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/api/cases")
-def list_cases(_: None = Depends(verify_token)):
-    result = supabase.table("cases").select("*").execute()
-    return result.data
-
-
-@app.get("/api/cases/{case_id}")
-def get_case(case_id: str, _: None = Depends(verify_token)):
-    result = supabase.table("cases").select("*").eq("id", case_id).execute()
-    if not result.data:
-        raise HTTPException(status_code=404, detail="Case not found")
-    return result.data[0]
-
-
-@app.post("/api/cases", status_code=201)
-def create_case(case: CaseCreate, _: None = Depends(verify_token)):
-    data = {
-        "case_name": case.name,
-        "case_type": case.type,
-        "client_name": case.client,
-        "opposing_party": case.opposing,
-    }
-    result = supabase.table("cases").insert(data).execute()
-    return result.data[0]
-
-
-@app.post("/api/chat")
-async def chat(req: ChatRequest, _: None = Depends(verify_token)):
-    """Web dashboard chat — routes through the unified Casey agent."""
-    ctx = {"supabase": supabase}
-    response = await process_message(req.message, context=ctx)
-    reply_text, document = _handle_agent_response(response, req.message)
-
-    return {
-        "response": reply_text,
-        "model": response["model"],
-        "document": document,
-        "session_id": req.session_id,
-    }
-
-
-@app.get("/api/documents/{filename}", include_in_schema=False)
-def download_document(filename: str):
-    # Prevent path traversal
-    safe_filename = Path(filename).name
-    filepath = DOCUMENTS_DIR / safe_filename
-    if not filepath.exists() or not filepath.is_file():
-        raise HTTPException(status_code=404, detail="Document not found")
-    return FileResponse(
-        str(filepath),
-        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        filename=safe_filename,
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=allowed_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
     )
 
+    # --- Rate Limiting ---
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-@app.get("/api/deadlines")
-def deadlines(_: None = Depends(verify_token)):
-    result = (
-        supabase.table("cases")
-        .select("*")
-        .eq("status", "active")
-        .order("created_at", desc=False)
-        .execute()
-    )
-    return result.data
+    # --- Shared Services (attached to app.state for route access) ---
+    supabase = create_client(settings.SUPABASE_URL, settings.SUPABASE_SECRET_KEY)
+    app.state.supabase = supabase
+    app.state.ai_client = CaseCommandAI()
+    app.state.doc_store = DocumentStore(supabase_client=supabase)
+    app.state.usage_tracker = UsageTracker(supabase)
+    app.state.stripe_service = StripeService(supabase) if settings.STRIPE_SECRET_KEY else None
 
+    # --- Register Route Modules ---
+    app.include_router(auth_routes.router)
+    app.include_router(case_routes.router)
+    app.include_router(chat_routes.router)
+    app.include_router(ai_routes.router)
+    app.include_router(document_routes.router)
+    app.include_router(billing_routes.router)
+    app.include_router(channel_routes.router)
+    app.include_router(agent_lab_routes.router)
 
-@app.post("/api/discovery")
-def analyze_discovery(req: DiscoveryRequest, _: None = Depends(verify_token)):
-    response = ai_client.analyze_discovery_responses(
-        case_name=req.case_name,
-        discovery_type=req.discovery_type,
-        requests_and_responses=req.requests_and_responses,
-    )
-    return {"result": response["text"], "model": response["model"]}
+    # --- Legacy v0 endpoints (backward compat — will be removed) ---
+    _register_legacy_routes(app)
 
+    # --- Frontend ---
+    @app.get("/", include_in_schema=False)
+    def serve_frontend():
+        index_path = Path(__file__).parent / "index.html"
+        if index_path.exists():
+            return HTMLResponse(content=index_path.read_text(encoding="utf-8"))
+        return HTMLResponse(
+            "<h1>CaseCommand</h1><p>Visit <a href='/docs'>/docs</a> for the API.</p>"
+        )
 
-@app.post("/api/settlement")
-def generate_settlement(req: SettlementRequest, _: None = Depends(verify_token)):
-    response = ai_client.generate_settlement_narrative(
-        case_name=req.case_name,
-        trigger_point=req.trigger_point,
-        valuation_data=req.valuation_data,
-        recommendation_data=req.recommendation_data,
-    )
-    return {"result": response["text"], "model": response["model"]}
+    # --- Health Check ---
+    @app.get("/api/health")
+    @app.get("/api/v1/health")
+    def health():
+        """Health check — verifies core services are reachable."""
+        health_status = {
+            "status": "ok",
+            "version": "2.0.0",
+            "model": settings.CLAUDE_MODEL,
+            "services": {
+                "supabase": bool(settings.SUPABASE_URL),
+                "anthropic": bool(settings.ANTHROPIC_API_KEY),
+                "stripe": bool(settings.STRIPE_SECRET_KEY),
+            },
+        }
+        return health_status
 
-
-# ---------------------------------------------------------------------------
-# TrialOutline Pro — landscape HTML viewer
-# ---------------------------------------------------------------------------
-
-
-def build_outline_html(case_name: str, witness_name: str, exam_type: str, outline_text: str) -> str:
-    """Parse AI outline text into a self-contained landscape HTML viewer."""
-    exam_label = "CROSS-EXAMINATION" if exam_type.lower() == "cross" else "DIRECT EXAMINATION"
-
-    # Parse sections and questions
-    sections: list[dict] = []
-    current: dict | None = None
-    for raw in outline_text.split("\n"):
-        line = raw.strip()
-        if not line:
-            continue
-        if re.match(r"^(#{1,3}|[IVXLC]+\.)\s", line) or (re.match(r"^\d+\.", line) and len(line) < 70 and line[0].isdigit() and not line[0:2].isdigit()):
-            title = re.sub(r"^#{1,3}\s*|^[IVXLC]+\.\s*", "", line).strip()
-            current = {"title": title, "goal": "", "questions": []}
-            sections.append(current)
-        elif line.lower().startswith("goal:") and current is not None:
-            current["goal"] = line[5:].strip()
-        elif current is not None and re.match(r"^\d+\.", line):
-            q = re.sub(r"^\d+\.\s*", "", line)
-            if q:
-                current["questions"].append(q)
-        elif current is not None and re.match(r"^[-•Q]\s", line):
-            q = re.sub(r"^[-•Q][:.]?\s*", "", line)
-            if q:
-                current["questions"].append(q)
-
-    if not sections:
-        questions = [re.sub(r"^\d+\.\s*|^[-•]\s*", "", l.strip())
-                     for l in outline_text.split("\n")
-                     if l.strip() and re.match(r"^\d+\.|^[-•]", l.strip())]
-        sections = [{"title": "Examination Questions", "goal": "", "questions": questions or ["(No questions parsed)"]}]
-
-    q_num = 1
-    sections_html = ""
-    for sec in sections:
-        items_html = ""
-        for q in sec["questions"]:
-            items_html += f'<div class="q-item" data-q="{q_num}" onclick="selectQ(this)">{q_num}. {q}</div>\n'
-            q_num += 1
-        goal_html = f'<div class="sec-goal">Goal: {sec["goal"]}</div>' if sec["goal"] else ""
-        sections_html += f"""<div class="section">
-  <div class="sec-title">{sec["title"].upper()}</div>{goal_html}{items_html}</div>"""
-
-    return f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<title>{exam_label} — {witness_name}</title>
-<style>
-@page {{ size: landscape; margin: 0.5in; }}
-*,*::before,*::after {{ box-sizing:border-box; margin:0; padding:0; }}
-body {{ font-family:"Times New Roman",serif; background:#f0f2f5; height:100vh; display:flex; flex-direction:column; overflow:hidden; }}
-.hdr {{ background:#1a1a2e; color:#fff; padding:10px 20px; display:flex; align-items:center; justify-content:space-between; flex-shrink:0; }}
-.hdr-title {{ font-size:15px; font-weight:700; }}
-.hdr-sub {{ font-size:11px; color:#aaa; margin-top:2px; }}
-.hdr-btns {{ display:flex; gap:8px; }}
-.hdr-btns button {{ padding:4px 12px; border-radius:4px; border:1px solid #555; background:transparent; color:#ccc; cursor:pointer; font-size:12px; }}
-.hdr-btns button:hover {{ background:#2a2a4e; color:#fff; }}
-.workspace {{ display:flex; flex:1; overflow:hidden; }}
-.q-panel {{ width:42%; background:#fff; border-right:2px solid #dee2e6; display:flex; flex-direction:column; overflow:hidden; }}
-.q-panel-hdr {{ background:#2c3e50; color:#fff; padding:8px 14px; font-size:12px; font-weight:700; letter-spacing:.3px; flex-shrink:0; }}
-.q-scroll {{ flex:1; overflow-y:auto; padding:10px; }}
-.section {{ margin-bottom:14px; }}
-.sec-title {{ font-size:10px; font-weight:700; color:#495057; background:#e9ecef; padding:3px 8px; border-radius:3px; margin-bottom:3px; letter-spacing:.5px; }}
-.sec-goal {{ font-size:10px; color:#6c757d; font-style:italic; padding:2px 8px 3px; }}
-.q-item {{ padding:6px 10px; border-radius:4px; margin-bottom:2px; font-size:12px; cursor:pointer; border-left:3px solid transparent; line-height:1.4; transition:background .1s; }}
-.q-item:hover {{ background:#f0f4ff; border-left-color:#4a90e2; }}
-.q-item.active {{ background:#dbeafe; border-left-color:#1d4ed8; font-weight:600; }}
-.kb-hint {{ font-size:10px; color:#6c757d; text-align:center; padding:5px; border-top:1px solid #dee2e6; background:#f8f9fa; flex-shrink:0; }}
-.ex-panel {{ width:58%; background:#fff; display:flex; flex-direction:column; overflow:hidden; }}
-.ex-panel-hdr {{ background:#155724; color:#fff; padding:8px 14px; font-size:12px; font-weight:700; flex-shrink:0; }}
-.ex-content {{ flex:1; overflow-y:auto; padding:20px; }}
-.q-display {{ background:#1d4ed8; color:#fff; padding:14px 18px; border-radius:8px; margin-bottom:20px; font-size:14px; font-weight:500; line-height:1.5; display:none; }}
-.q-display.show {{ display:block; }}
-.exhibit-ph {{ border:2px dashed #dee2e6; border-radius:8px; padding:40px 30px; text-align:center; color:#adb5bd; }}
-.exhibit-ph h3 {{ font-size:15px; margin-bottom:8px; color:#6c757d; }}
-.exhibit-ph p {{ font-size:12px; line-height:1.6; }}
-@media print {{
-  body {{ height:auto; overflow:visible; }}
-  .hdr-btns {{ display:none; }}
-  .workspace {{ page-break-inside:avoid; }}
-}}
-</style>
-</head>
-<body>
-<div class="hdr">
-  <div>
-    <div class="hdr-title">⚖️ {exam_label}: {witness_name}</div>
-    <div class="hdr-sub">{case_name} &nbsp;·&nbsp; CaseCommand by LawClaw</div>
-  </div>
-  <div class="hdr-btns">
-    <button onclick="prev()">← Prev</button>
-    <span id="counter" style="color:#aaa;font-size:12px;align-self:center">0 / {q_num - 1}</span>
-    <button onclick="next()">Next →</button>
-    <button onclick="window.print()">🖨 Print</button>
-    <button onclick="window.close()">✕ Close</button>
-  </div>
-</div>
-<div class="workspace">
-  <div class="q-panel">
-    <div class="q-panel-hdr">📋 Examination Questions</div>
-    <div class="q-scroll" id="qScroll">{sections_html}</div>
-    <div class="kb-hint">↑ ↓ Arrow keys to navigate · Click question to select</div>
-  </div>
-  <div class="ex-panel">
-    <div class="ex-panel-hdr">📄 Current Question / Exhibit Reference</div>
-    <div class="ex-content">
-      <div class="q-display" id="qDisplay"></div>
-      <div class="exhibit-ph" id="exPh">
-        <h3>Select a question to begin</h3>
-        <p>Click any question on the left or use ↑↓ arrow keys.<br>
-        The question will appear here in large text for easy reference at counsel table.<br><br>
-        Exhibits can be added to CaseCommand cases to display alongside questions.</p>
-      </div>
-    </div>
-  </div>
-</div>
-<script>
-const items = Array.from(document.querySelectorAll('.q-item'));
-const total = items.length;
-let idx = -1;
-function selectQ(el) {{
-  items.forEach(i => i.classList.remove('active'));
-  el.classList.add('active');
-  idx = items.indexOf(el);
-  document.getElementById('qDisplay').textContent = el.textContent;
-  document.getElementById('qDisplay').classList.add('show');
-  document.getElementById('exPh').style.display = 'none';
-  document.getElementById('counter').textContent = (idx+1) + ' / ' + total;
-  el.scrollIntoView({{block:'nearest'}});
-}}
-function next() {{ if (idx < total-1) selectQ(items[idx+1]); }}
-function prev() {{ if (idx > 0) selectQ(items[idx-1]); }}
-document.addEventListener('keydown', e => {{
-  if (e.key==='ArrowDown') {{ e.preventDefault(); next(); }}
-  if (e.key==='ArrowUp')   {{ e.preventDefault(); prev(); }}
-}});
-if (total > 0) selectQ(items[0]);
-</script>
-</body>
-</html>"""
+    return app
 
 
-@app.post("/api/outline")
-def generate_outline(req: OutlineRequest, _: None = Depends(verify_token)):
-    response = ai_client.generate_examination_outline(
-        case_name=req.case_name,
-        witness_name=req.witness_name,
-        witness_role=req.witness_role,
-        exam_type=req.exam_type,
-        case_documents=req.documents,
-        case_theory=req.case_theory,
-    )
-    html = build_outline_html(
-        case_name=req.case_name,
-        witness_name=req.witness_name,
-        exam_type=req.exam_type,
-        outline_text=response["text"],
-    )
-    outline_id = uuid.uuid4().hex[:8]
-    filename = f"outline_{outline_id}.html"
-    (OUTLINES_DIR / filename).write_text(html, encoding="utf-8")
-    return {"url": f"/api/outlines/{filename}", "model": response["model"]}
-
-
-@app.get("/api/outlines/{filename}", include_in_schema=False)
-def serve_outline(filename: str):
-    safe = Path(filename).name
-    filepath = OUTLINES_DIR / safe
-    if not filepath.exists():
-        raise HTTPException(status_code=404, detail="Outline not found")
-    return HTMLResponse(content=filepath.read_text(encoding="utf-8"))
-
-
-# ---------------------------------------------------------------------------
-# Shared agent response handler (used by web chat + messaging channels)
-# ---------------------------------------------------------------------------
-
-
-def _handle_agent_response(response: dict, original_message: str) -> tuple[str, dict | None]:
+def _register_legacy_routes(app: FastAPI):
     """
-    Post-process agent response: build .docx if a document tool was called,
-    handle DOCUMENT_TITLE: fallback, append download link.
-
-    Returns (reply_text, document_dict_or_None).
+    Backward-compatible v0 routes that proxy to v1.
+    These allow the existing index.html frontend to work unchanged
+    while we build the new frontend.
     """
-    reply_text = response["reply"].strip()
-    document = None
+    from fastapi import Depends, HTTPException
+    from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+    from fastapi.responses import FileResponse
+    from src.models.requests import (
+        CaseCreate, ChatRequest, AIRequest,
+        DiscoveryRequest, SettlementRequest, OutlineRequest, AgentOutputUpdate,
+    )
+    from src.agent import process_message
+    from src.storage.documents import (
+        DocumentStore, extract_title_and_body, title_from_message, LOCAL_DIR, OUTLINES_DIR,
+    )
+    from src.channels import telegram as tg_channel
 
-    for tool_call in response.get("tool_calls", []):
-        if tool_call["name"] == "generate_legal_document":
+    settings = get_settings()
+    security = HTTPBearer(auto_error=False)
+
+    def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
+        """Legacy auth — requires AUTH_TOKEN to be set."""
+        if not settings.AUTH_TOKEN:
+            # SECURITY FIX: Reject all requests if no auth is configured
+            raise HTTPException(status_code=401, detail="Server auth not configured")
+        if not credentials or credentials.credentials != settings.AUTH_TOKEN:
+            raise HTTPException(status_code=401, detail="Invalid or missing token")
+
+    @app.get("/api/cases")
+    def legacy_list_cases(_=Depends(verify_token)):
+        db = app.state.supabase
+        result = db.table("cases").select("*").execute()
+        return result.data
+
+    @app.get("/api/cases/{case_id}")
+    def legacy_get_case(case_id: str, _=Depends(verify_token)):
+        db = app.state.supabase
+        result = db.table("cases").select("*").eq("id", case_id).execute()
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Case not found")
+        return result.data[0]
+
+    @app.post("/api/cases", status_code=201)
+    def legacy_create_case(case: CaseCreate, _=Depends(verify_token)):
+        db = app.state.supabase
+        data = {
+            "case_name": case.name,
+            "case_type": case.type,
+            "client_name": case.client,
+            "opposing_party": case.opposing,
+        }
+        result = db.table("cases").insert(data).execute()
+        return result.data[0]
+
+    @app.post("/api/chat")
+    async def legacy_chat(req: ChatRequest, _=Depends(verify_token)):
+        db = app.state.supabase
+        doc_store: DocumentStore = app.state.doc_store
+        ctx = {"supabase": db}
+        response = await process_message(req.message, context=ctx)
+        reply_text = response["reply"].strip()
+        document = None
+
+        for tool_call in response.get("tool_calls", []):
+            if tool_call["name"] == "generate_legal_document":
+                try:
+                    title = tool_call["input"]["title"]
+                    body = tool_call["input"]["body"]
+                    filename, _ = doc_store.build_docx(title, body)
+                    document = {
+                        "filename": filename,
+                        "url": f"/api/documents/{filename}",
+                        "title": title.replace("_", " "),
+                    }
+                    if not reply_text:
+                        reply_text = body
+                except Exception:
+                    pass
+
+        if not document and "DOCUMENT_TITLE:" in reply_text:
             try:
-                title = tool_call["input"]["title"]
-                body = tool_call["input"]["body"]
-                filename = build_docx(title, body)
+                fallback = title_from_message(req.message)
+                title, body = extract_title_and_body(reply_text, fallback=fallback)
+                filename, _ = doc_store.build_docx(title, body)
                 document = {
                     "filename": filename,
                     "url": f"/api/documents/{filename}",
                     "title": title.replace("_", " "),
                 }
-                if not reply_text:
-                    reply_text = body
+                reply_text = body
             except Exception:
                 pass
 
-    if not document and "DOCUMENT_TITLE:" in reply_text:
+        if document:
+            reply_text += (
+                f"\n\n**Document Ready:** {document['title']}\n"
+                f"Download: {document['url']}"
+            )
+
+        return {
+            "response": reply_text,
+            "model": response["model"],
+            "document": document,
+            "session_id": req.session_id,
+        }
+
+    @app.post("/api/ai")
+    async def legacy_ai(req: AIRequest, _=Depends(verify_token)):
+        ai_client = app.state.ai_client
         try:
-            fallback = _title_from_message(original_message)
-            title, body = extract_title_and_body(reply_text, fallback=fallback)
-            filename = build_docx(title, body)
-            document = {
-                "filename": filename,
-                "url": f"/api/documents/{filename}",
-                "title": title.replace("_", " "),
-            }
-            reply_text = body
-        except Exception:
-            pass
+            response = ai_client._call_api(req.system, req.message, max_tokens=req.max_tokens)
+            return {"text": response["text"], "success": True, "usage": response.get("usage", {})}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
 
-    if document:
-        reply_text += (
-            f"\n\n📄 **Document Ready:** {document['title']}\n"
-            f"Download: {document['url']}"
+    @app.get("/api/documents/{filename}", include_in_schema=False)
+    def legacy_download_document(filename: str, _=Depends(verify_token)):
+        safe_filename = Path(filename).name
+        filepath = LOCAL_DIR / safe_filename
+        if not filepath.exists() or not filepath.is_file():
+            raise HTTPException(status_code=404, detail="Document not found")
+        return FileResponse(
+            str(filepath),
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            filename=safe_filename,
         )
 
-    return reply_text, document
-
-
-# ---------------------------------------------------------------------------
-# Telegram webhook
-# ---------------------------------------------------------------------------
-
-
-@app.post("/webhook/telegram")
-async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
-    """
-    Receive Telegram updates via webhook. Processes messages through
-    the Casey agent and replies in-channel.
-    """
-    if not tg_channel.is_configured():
-        raise HTTPException(status_code=503, detail="Telegram not configured")
-
-    try:
-        update = await request.json()
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid JSON")
-
-    parsed = tg_channel.parse_update(update)
-    if not parsed:
-        return {"ok": True}  # Non-message update (e.g., button callback)
-
-    if not tg_channel.is_authorized(parsed["user_id"]):
-        await tg_channel.send_message(
-            parsed["chat_id"],
-            "⛔ You are not authorized to use CaseCommand. "
-            "Contact your administrator to get access.",
-            reply_to=parsed["message_id"],
+    @app.get("/api/deadlines")
+    def legacy_deadlines(_=Depends(verify_token)):
+        db = app.state.supabase
+        result = (
+            db.table("cases")
+            .select("*")
+            .eq("status", "active")
+            .order("created_at", desc=False)
+            .execute()
         )
-        return {"ok": True}
+        return result.data
 
-    # Process in background so Telegram doesn't time out
-    background_tasks.add_task(
-        _process_telegram_message,
-        parsed["chat_id"],
-        parsed["text"],
-        parsed["message_id"],
-    )
-    return {"ok": True}
-
-
-async def _process_telegram_message(chat_id: int, text: str, reply_to: int):
-    """Background task: run agent and reply on Telegram."""
-    try:
-        ctx = {"supabase": supabase}
-        response = await process_message(text, context=ctx)
-        reply_text, document = _handle_agent_response(response, text)
-
-        # Send text reply
-        await tg_channel.send_message(chat_id, reply_text, reply_to=reply_to)
-
-        # If a document was generated, also send the file
-        if document:
-            filepath = DOCUMENTS_DIR / document["filename"]
-            if filepath.exists():
-                await tg_channel.send_document(
-                    chat_id,
-                    str(filepath),
-                    caption=f"📄 {document['title']}",
-                )
-    except Exception as e:
-        logger.error(f"Telegram processing error: {e}")
-        await tg_channel.send_message(
-            chat_id,
-            "⚠️ Sorry, I encountered an error processing your request. Please try again.",
-            reply_to=reply_to,
+    @app.post("/api/discovery")
+    def legacy_discovery(req: DiscoveryRequest, _=Depends(verify_token)):
+        ai_client = app.state.ai_client
+        response = ai_client.analyze_discovery_responses(
+            case_name=req.case_name,
+            discovery_type=req.discovery_type,
+            requests_and_responses=req.requests_and_responses,
         )
+        return {"result": response["text"], "model": response["model"]}
 
-
-# ---------------------------------------------------------------------------
-# Twilio webhook (SMS + WhatsApp)
-# ---------------------------------------------------------------------------
-
-
-@app.post("/webhook/twilio")
-async def twilio_webhook(request: Request, background_tasks: BackgroundTasks):
-    """
-    Receive Twilio SMS/WhatsApp webhook callbacks. Processes messages
-    through the Casey agent and replies via Twilio API.
-    """
-    if not tw_channel.is_configured():
-        raise HTTPException(status_code=503, detail="Twilio not configured")
-
-    try:
-        form = await request.form()
-        form_data = dict(form)
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid form data")
-
-    parsed = tw_channel.parse_webhook(form_data)
-    if not parsed:
-        return {"ok": True}
-
-    if not tw_channel.is_authorized(parsed["from"]):
-        await tw_channel.send_message(
-            parsed["from"],
-            "⛔ You are not authorized to use CaseCommand.",
-            channel=parsed["channel"],
+    @app.post("/api/settlement")
+    def legacy_settlement(req: SettlementRequest, _=Depends(verify_token)):
+        ai_client = app.state.ai_client
+        response = ai_client.generate_settlement_narrative(
+            case_name=req.case_name,
+            trigger_point=req.trigger_point,
+            valuation_data=req.valuation_data,
+            recommendation_data=req.recommendation_data,
         )
-        # Return TwiML empty response
-        return HTMLResponse(
-            content="<Response></Response>",
-            media_type="application/xml",
+        return {"result": response["text"], "model": response["model"]}
+
+    @app.post("/api/outline")
+    def legacy_outline(req: OutlineRequest, _=Depends(verify_token)):
+        ai_client = app.state.ai_client
+        from src.routes.ai_routes import _build_outline_html
+        import uuid
+        response = ai_client.generate_examination_outline(
+            case_name=req.case_name,
+            witness_name=req.witness_name,
+            witness_role=req.witness_role,
+            exam_type=req.exam_type,
+            case_documents=req.documents,
+            case_theory=req.case_theory,
         )
-
-    # Process in background
-    background_tasks.add_task(
-        _process_twilio_message,
-        parsed["from"],
-        parsed["body"],
-        parsed["channel"],
-    )
-
-    # Return empty TwiML so Twilio doesn't retry
-    return HTMLResponse(
-        content="<Response></Response>",
-        media_type="application/xml",
-    )
-
-
-async def _process_twilio_message(from_number: str, text: str, channel: str):
-    """Background task: run agent and reply via Twilio SMS/WhatsApp."""
-    try:
-        ctx = {"supabase": supabase}
-        response = await process_message(text, context=ctx)
-        reply_text, document = _handle_agent_response(response, text)
-
-        # For messaging channels, include download URL as full URL if document generated
-        if document:
-            base_url = os.environ.get("BASE_URL", "").rstrip("/")
-            if base_url:
-                reply_text = reply_text.replace(
-                    document["url"],
-                    f"{base_url}{document['url']}",
-                )
-
-        await tw_channel.send_message(from_number, reply_text, channel=channel)
-    except Exception as e:
-        logger.error(f"Twilio processing error: {e}")
-        await tw_channel.send_message(
-            from_number,
-            "⚠️ Sorry, I encountered an error. Please try again.",
-            channel=channel,
+        html = _build_outline_html(
+            case_name=req.case_name,
+            witness_name=req.witness_name,
+            exam_type=req.exam_type,
+            outline_text=response["text"],
         )
+        outline_id = uuid.uuid4().hex[:8]
+        filename = f"outline_{outline_id}.html"
+        (OUTLINES_DIR / filename).write_text(html, encoding="utf-8")
+        return {"url": f"/api/outlines/{filename}", "model": response["model"]}
 
+    @app.get("/api/outlines/{filename}", include_in_schema=False)
+    def legacy_serve_outline(filename: str):
+        safe = Path(filename).name
+        filepath = OUTLINES_DIR / safe
+        if not filepath.exists():
+            raise HTTPException(status_code=404, detail="Outline not found")
+        return HTMLResponse(content=filepath.read_text(encoding="utf-8"))
 
-# ---------------------------------------------------------------------------
-# Channel setup helpers
-# ---------------------------------------------------------------------------
+    @app.get("/api/agent-outputs")
+    def legacy_list_outputs(status: str | None = None, agent: str | None = None, limit: int = 50, _=Depends(verify_token)):
+        db = app.state.supabase
+        query = db.table("agent_outputs").select("*").order("created_at", desc=True).limit(limit)
+        if status:
+            query = query.eq("status", status)
+        if agent:
+            query = query.eq("agent_name", agent)
+        return query.execute().data
 
+    @app.get("/api/agent-outputs/summary")
+    def legacy_outputs_summary(_=Depends(verify_token)):
+        db = app.state.supabase
+        data = db.table("agent_outputs").select("id,agent_name,status,priority,run_id,created_at").order("created_at", desc=True).execute().data or []
+        pending = [r for r in data if r["status"] == "pending"]
+        applied = [r for r in data if r["status"] == "applied"]
+        dismissed = [r for r in data if r["status"] == "dismissed"]
+        agents = {}
+        for r in data:
+            name = r["agent_name"]
+            if name not in agents:
+                agents[name] = {"total": 0, "pending": 0, "applied": 0}
+            agents[name]["total"] += 1
+            if r["status"] == "pending":
+                agents[name]["pending"] += 1
+            elif r["status"] == "applied":
+                agents[name]["applied"] += 1
+        run_ids = list({r["run_id"] for r in data if r.get("run_id")})
+        return {"total": len(data), "pending": len(pending), "applied": len(applied), "dismissed": len(dismissed), "agents": agents, "latest_run_id": run_ids[0] if run_ids else None}
 
-@app.post("/api/channels/telegram/setup")
-async def setup_telegram(_: None = Depends(verify_token)):
-    """Register the Telegram webhook. Call once after deployment."""
-    if not tg_channel.is_configured():
-        raise HTTPException(status_code=400, detail="TELEGRAM_BOT_TOKEN not set")
-    base_url = os.environ.get("BASE_URL", "").rstrip("/")
-    if not base_url:
-        raise HTTPException(
-            status_code=400,
-            detail="BASE_URL env var not set. Set it to your public URL (e.g., https://casecommand.onrender.com)",
-        )
-    result = await tg_channel.set_webhook(f"{base_url}/webhook/telegram")
-    return result
-
-
-@app.get("/api/channels/status")
-async def channel_status(_: None = Depends(verify_token)):
-    """Check which messaging channels are configured, with live webhook status."""
-    tg_webhook = None
-    tg_bot = None
-    if tg_channel.is_configured():
-        tg_webhook = await tg_channel.get_webhook_info()
-        tg_bot = await tg_channel.get_bot_info()
-
-    webhook_url = ""
-    webhook_active = False
-    if tg_webhook and tg_webhook.get("ok"):
-        result = tg_webhook.get("result", {})
-        webhook_url = result.get("url", "")
-        webhook_active = bool(webhook_url)
-
-    bot_username = ""
-    if tg_bot and tg_bot.get("ok"):
-        bot_username = tg_bot.get("result", {}).get("username", "")
-
-    return {
-        "telegram": {
-            "configured": tg_channel.is_configured(),
-            "webhook": "/webhook/telegram",
-            "webhook_url": webhook_url,
-            "webhook_active": webhook_active,
-            "bot_username": bot_username,
-        },
-        "twilio_sms": {
-            "configured": tw_channel.is_configured() and bool(tw_channel.TWILIO_PHONE_NUMBER),
-            "webhook": "/webhook/twilio",
-        },
-        "twilio_whatsapp": {
-            "configured": tw_channel.is_configured() and bool(tw_channel.TWILIO_WHATSAPP_NUMBER),
-            "webhook": "/webhook/twilio",
-        },
-        "web": {
-            "configured": True,
-            "endpoint": "/api/chat",
-        },
-    }
-
-
-# ---------------------------------------------------------------------------
-# Agent Lab — Admin endpoints for reviewing agent outputs
-# ---------------------------------------------------------------------------
-
-
-class AgentOutputUpdate(BaseModel):
-    status: str  # "applied" or "dismissed"
-
-
-@app.get("/api/agent-outputs")
-def list_agent_outputs(
-    status: str | None = None,
-    agent: str | None = None,
-    limit: int = 50,
-    _: None = Depends(verify_token),
-):
-    """List agent outputs, optionally filtered by status or agent name."""
-    query = supabase.table("agent_outputs").select("*").order("created_at", desc=True).limit(limit)
-    if status:
-        query = query.eq("status", status)
-    if agent:
-        query = query.eq("agent_name", agent)
-    result = query.execute()
-    return result.data
-
-
-@app.get("/api/agent-outputs/summary")
-def agent_outputs_summary(_: None = Depends(verify_token)):
-    """Get summary stats for the Agent Lab dashboard."""
-    all_outputs = supabase.table("agent_outputs").select("id,agent_name,status,priority,run_id,created_at").order("created_at", desc=True).execute()
-    data = all_outputs.data or []
-
-    pending = [r for r in data if r["status"] == "pending"]
-    applied = [r for r in data if r["status"] == "applied"]
-    dismissed = [r for r in data if r["status"] == "dismissed"]
-
-    # Group by agent
-    agents = {}
-    for r in data:
-        name = r["agent_name"]
-        if name not in agents:
-            agents[name] = {"total": 0, "pending": 0, "applied": 0}
-        agents[name]["total"] += 1
-        if r["status"] == "pending":
-            agents[name]["pending"] += 1
-        elif r["status"] == "applied":
-            agents[name]["applied"] += 1
-
-    # Latest run
-    run_ids = list({r["run_id"] for r in data if r.get("run_id")})
-    latest_run = run_ids[0] if run_ids else None
-
-    return {
-        "total": len(data),
-        "pending": len(pending),
-        "applied": len(applied),
-        "dismissed": len(dismissed),
-        "agents": agents,
-        "latest_run_id": latest_run,
-    }
-
-
-@app.patch("/api/agent-outputs/{output_id}")
-def update_agent_output(output_id: str, update: AgentOutputUpdate, _: None = Depends(verify_token)):
-    """Mark an agent output as applied or dismissed."""
-    update_data = {"status": update.status}
-    if update.status == "applied":
+    @app.patch("/api/agent-outputs/{output_id}")
+    def legacy_update_output(output_id: str, update: AgentOutputUpdate, _=Depends(verify_token)):
         from datetime import datetime, timezone
-        update_data["applied_at"] = datetime.now(timezone.utc).isoformat()
-        update_data["applied_by"] = "admin"
+        db = app.state.supabase
+        update_data = {"status": update.status}
+        if update.status == "applied":
+            update_data["applied_at"] = datetime.now(timezone.utc).isoformat()
+            update_data["applied_by"] = "admin"
+        result = db.table("agent_outputs").update(update_data).eq("id", output_id).execute()
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Agent output not found")
+        return result.data[0]
 
-    result = supabase.table("agent_outputs").update(update_data).eq("id", output_id).execute()
-    if not result.data:
-        raise HTTPException(status_code=404, detail="Agent output not found")
-    return result.data[0]
+    @app.get("/api/channels/status")
+    async def legacy_channel_status(_=Depends(verify_token)):
+        from src.channels import telegram as tg_ch, twilio as tw_ch
+        tg_webhook = await tg_ch.get_webhook_info() if tg_ch.is_configured() else None
+        tg_bot = await tg_ch.get_bot_info() if tg_ch.is_configured() else None
+        webhook_url = ""
+        webhook_active = False
+        if tg_webhook and tg_webhook.get("ok"):
+            r = tg_webhook.get("result", {})
+            webhook_url = r.get("url", "")
+            webhook_active = bool(webhook_url)
+        bot_username = ""
+        if tg_bot and tg_bot.get("ok"):
+            bot_username = tg_bot.get("result", {}).get("username", "")
+        return {
+            "telegram": {"configured": tg_ch.is_configured(), "webhook": "/webhook/telegram", "webhook_url": webhook_url, "webhook_active": webhook_active, "bot_username": bot_username},
+            "twilio_sms": {"configured": tw_ch.is_configured() and bool(tw_ch.TWILIO_PHONE_NUMBER), "webhook": "/webhook/twilio"},
+            "twilio_whatsapp": {"configured": tw_ch.is_configured() and bool(tw_ch.TWILIO_WHATSAPP_NUMBER), "webhook": "/webhook/twilio"},
+            "web": {"configured": True, "endpoint": "/api/chat"},
+        }
+
+    @app.post("/api/channels/telegram/setup")
+    async def legacy_telegram_setup(_=Depends(verify_token)):
+        import os
+        if not tg_channel.is_configured():
+            raise HTTPException(status_code=400, detail="TELEGRAM_BOT_TOKEN not set")
+        base_url = os.environ.get("BASE_URL", "").rstrip("/")
+        if not base_url:
+            raise HTTPException(status_code=400, detail="BASE_URL not set")
+        return await tg_channel.set_webhook(f"{base_url}/webhook/telegram")
 
 
-# ---------------------------------------------------------------------------
-# Entry point
-# ---------------------------------------------------------------------------
+# --- App instance ---
+app = create_app()
 
 if __name__ == "__main__":
+    import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=3000)
