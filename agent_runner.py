@@ -230,27 +230,36 @@ def load_codebase_context() -> str:
 # ---------------------------------------------------------------------------
 
 async def call_claude(system: str, user_message: str) -> str:
-    """Call the Anthropic Messages API and return the text response."""
+    """Call the Anthropic Messages API with retry on rate limits."""
     async with httpx.AsyncClient(timeout=120.0) as client:
-        resp = await client.post(
-            "https://api.anthropic.com/v1/messages",
-            headers={
-                "x-api-key": ANTHROPIC_API_KEY,
-                "anthropic-version": "2023-06-01",
-                "content-type": "application/json",
-            },
-            json={
-                "model": MODEL,
-                "max_tokens": MAX_TOKENS,
-                "system": system,
-                "messages": [{"role": "user", "content": user_message}],
-            },
-        )
+        for attempt in range(5):
+            resp = await client.post(
+                "https://api.anthropic.com/v1/messages",
+                headers={
+                    "x-api-key": ANTHROPIC_API_KEY,
+                    "anthropic-version": "2023-06-01",
+                    "content-type": "application/json",
+                },
+                json={
+                    "model": MODEL,
+                    "max_tokens": MAX_TOKENS,
+                    "system": system,
+                    "messages": [{"role": "user", "content": user_message}],
+                },
+            )
+            if resp.status_code == 429:
+                wait = 2 ** attempt * 10  # 10s, 20s, 40s, 80s, 160s
+                print(f"    Rate limited — retrying in {wait}s (attempt {attempt + 1}/5)")
+                await asyncio.sleep(wait)
+                continue
+            resp.raise_for_status()
+            data = resp.json()
+            return "".join(
+                block["text"] for block in data.get("content", []) if block.get("type") == "text"
+            )
+        # Final attempt failed
         resp.raise_for_status()
-        data = resp.json()
-        return "".join(
-            block["text"] for block in data.get("content", []) if block.get("type") == "text"
-        )
+        return ""
 
 
 # ---------------------------------------------------------------------------
@@ -387,7 +396,7 @@ async def main():
     print()
 
     # Run agents in parallel (with concurrency limit to avoid rate limits)
-    semaphore = asyncio.Semaphore(3)
+    semaphore = asyncio.Semaphore(2)
 
     async def run_with_limit(agent):
         async with semaphore:
