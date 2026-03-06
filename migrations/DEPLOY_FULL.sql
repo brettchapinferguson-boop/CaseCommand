@@ -1388,6 +1388,27 @@ ALTER TABLE deposition_preps ENABLE ROW LEVEL SECURITY;
 ALTER TABLE verdict_library ENABLE ROW LEVEL SECURITY;
 ALTER TABLE case_timeline ENABLE ROW LEVEL SECURITY;
 
+-- Ensure org_id column exists on all tables that need org-scoped policies
+-- (handles case where table was created by an earlier migration without org_id)
+DO $$
+DECLARE
+    tbl TEXT;
+BEGIN
+    FOR tbl IN SELECT unnest(ARRAY[
+        'client_intakes', 'intake_causes_of_action', 'case_facts',
+        'discovery_sets', 'case_deadlines', 'motions',
+        'contract_reviews', 'deposition_preps', 'case_timeline'
+    ]) LOOP
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = tbl AND column_name = 'org_id'
+        ) THEN
+            EXECUTE format('ALTER TABLE %I ADD COLUMN org_id UUID REFERENCES organizations(id) ON DELETE CASCADE', tbl);
+        END IF;
+    END LOOP;
+END
+$$;
+
 -- Org-scoped policies for all new tables
 DO $$
 DECLARE
