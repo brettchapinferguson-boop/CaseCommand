@@ -73,22 +73,37 @@ PRIMA_FACIE_TEMPLATES: dict[str, list[dict]] = {
         {"name": "Wages Owed", "description": "Employer failed to pay wages due (overtime, minimum wage, meal/rest breaks, etc.)", "statute": "Lab. Code §§510, 1194, 226.7"},
         {"name": "Amount", "description": "Specific wages owed can be calculated", "statute": "Lab. Code §1194"},
     ],
+    "failure_to_prevent": [
+        {"name": "Employment Relationship", "description": "An employer-employee relationship existed", "statute": "Gov. Code §12940(k)"},
+        {"name": "Underlying Violation", "description": "Plaintiff was subjected to discrimination, harassment, or retaliation", "statute": "Gov. Code §12940(k)"},
+        {"name": "Failure to Prevent", "description": "Employer failed to take all reasonable steps to prevent the violation", "statute": "Gov. Code §12940(k)"},
+        {"name": "Harm", "description": "The failure was a substantial factor in causing harm", "statute": "Gov. Code §12940(k)"},
+    ],
+    "IIED": [
+        {"name": "Outrageous Conduct", "description": "Defendant engaged in extreme and outrageous conduct", "statute": "Common Law"},
+        {"name": "Intent or Recklessness", "description": "Defendant intended to cause or recklessly disregarded the probability of causing emotional distress", "statute": "Common Law"},
+        {"name": "Severe Distress", "description": "Plaintiff suffered severe or extreme emotional distress", "statute": "Common Law"},
+        {"name": "Causation", "description": "Defendant's conduct was a substantial factor in causing the distress", "statute": "Common Law"},
+    ],
 }
 
 # Statute of limitations (years from date of adverse action / last act)
 SOL_MAP: dict[str, int] = {
-    "FEHA_discrimination": 3,       # 3 years from exhaustion (1yr DFEH + 1yr right to sue)
+    # FEHA claims: 3yr to file CRD complaint + 1yr from right-to-sue = 4yr total window
+    # Using 3yr as base (CRD filing deadline per AB 9/SHARE Act, Gov. Code §12960)
+    "FEHA_discrimination": 3,
     "FEHA_harassment": 3,
     "FEHA_retaliation": 3,
     "failure_to_accommodate": 3,
     "failure_to_engage_interactive_process": 3,
-    "wrongful_termination": 2,      # 2 years (tort)
-    "CFRA_violation": 3,
-    "wage_theft": 3,                # 3 years for most; 4 for UCL
-    "breach_of_contract_written": 4,
-    "breach_of_contract_oral": 2,
-    "IIED": 2,
-    "negligent_supervision": 2,
+    "failure_to_prevent": 3,        # Gov. Code §12940(k) — derivative of FEHA
+    "wrongful_termination": 2,      # 2 years — CCP §335.1 (personal injury)
+    "CFRA_violation": 3,            # Gov. Code §12945.2
+    "wage_theft": 3,                # CCP §338; 4 for UCL (Bus. & Prof. Code §17208)
+    "breach_of_contract_written": 4,  # CCP §337
+    "breach_of_contract_oral": 2,     # CCP §339
+    "IIED": 2,                      # CCP §335.1
+    "negligent_supervision": 2,      # CCP §335.1
 }
 
 

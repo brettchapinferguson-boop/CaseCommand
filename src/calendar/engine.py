@@ -41,7 +41,10 @@ LITIGATION_DEADLINES = {
     "answer_filed": [
         {"title": "Discovery cutoff (C-30)", "days": -30, "type": "discovery", "source": "CCP §2024.020", "priority": "critical", "from_trial": True},
         {"title": "Expert discovery cutoff (C-15)", "days": -15, "type": "discovery", "source": "CCP §2024.030", "priority": "critical", "from_trial": True},
-        {"title": "MSJ filing deadline (C-75)", "days": -75, "type": "filing", "source": "CCP §437c(a)", "priority": "high", "from_trial": True},
+        {"title": "MSJ filing deadline (C-81)", "days": -81, "type": "filing", "source": "CCP §437c(a) (AB 2049)", "priority": "high", "from_trial": True},
+        {"title": "Expert demand deadline (C-70)", "days": -70, "type": "discovery", "source": "CCP §2034.220", "priority": "high", "from_trial": True},
+        {"title": "Expert disclosure deadline (C-50)", "days": -50, "type": "discovery", "source": "CCP §2034.230", "priority": "high", "from_trial": True},
+        {"title": "Last day to serve written discovery (C-100)", "days": -100, "type": "discovery", "source": "CCP §§2024.020, 2030.260", "priority": "high", "from_trial": True},
     ],
     "discovery_served": [
         {"title": "Discovery response due", "days": 30, "type": "discovery", "source": "CCP §2030.260", "priority": "high"},
@@ -57,7 +60,10 @@ LITIGATION_DEADLINES = {
         {"title": "Jury instructions due", "days": -10, "type": "filing", "source": "CRC 2.1055", "priority": "high"},
         {"title": "Discovery cutoff", "days": -30, "type": "discovery", "source": "CCP §2024.020", "priority": "critical"},
         {"title": "Expert discovery cutoff", "days": -15, "type": "discovery", "source": "CCP §2024.030", "priority": "critical"},
-        {"title": "MSJ hearing deadline", "days": -30, "type": "hearing", "source": "CCP §437c", "priority": "high"},
+        {"title": "MSJ hearing deadline", "days": -30, "type": "hearing", "source": "CCP §437c (AB 2049)", "priority": "high"},
+        {"title": "MSJ filing deadline (81-day notice)", "days": -81, "type": "filing", "source": "CCP §437c(a) (AB 2049)", "priority": "high"},
+        {"title": "Expert demand deadline", "days": -70, "type": "discovery", "source": "CCP §2034.220", "priority": "high"},
+        {"title": "Expert disclosure deadline", "days": -50, "type": "discovery", "source": "CCP §2034.230", "priority": "high"},
     ],
 }
 

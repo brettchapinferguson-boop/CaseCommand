@@ -44,11 +44,11 @@ MOTION_TIMING = {
         "requires_separate_statement": True,
     },
     "msj": {
-        "filing_deadline_before_trial": 75,
-        "hearing_notice_days": 75,
-        "opposition_days_before": 14,
-        "reply_days_before": 5,
-        "ccp_section": "CCP §437c",
+        "filing_deadline_before_trial": 81,   # AB 2049 (2025): 81 days notice
+        "hearing_notice_days": 81,
+        "opposition_days_before": 20,          # AB 2049: 20 days (was 14)
+        "reply_days_before": 11,               # AB 2049: 11 days (was 5)
+        "ccp_section": "CCP §437c (as amended AB 2049)",
         "requires_separate_statement": True,
     },
     "motion_in_limine": {
