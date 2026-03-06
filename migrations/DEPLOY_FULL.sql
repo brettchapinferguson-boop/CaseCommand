@@ -71,36 +71,46 @@ ALTER TABLE examination_outlines ENABLE ROW LEVEL SECURITY;
 ALTER TABLE settlement_narratives ENABLE ROW LEVEL SECURITY;
 
 -- Cases policies
+DROP POLICY IF EXISTS "Users can view their own cases" ON cases;
 CREATE POLICY "Users can view their own cases"
     ON cases FOR SELECT USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can create their own cases" ON cases;
 CREATE POLICY "Users can create their own cases"
     ON cases FOR INSERT WITH CHECK (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can update their own cases" ON cases;
 CREATE POLICY "Users can update their own cases"
     ON cases FOR UPDATE USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can delete their own cases" ON cases;
 CREATE POLICY "Users can delete their own cases"
     ON cases FOR DELETE USING (auth.uid() = user_id);
 
 -- Discovery analyses policies
+DROP POLICY IF EXISTS "Users can view their own discovery analyses" ON discovery_analyses;
 CREATE POLICY "Users can view their own discovery analyses"
     ON discovery_analyses FOR SELECT USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can create discovery analyses" ON discovery_analyses;
 CREATE POLICY "Users can create discovery analyses"
     ON discovery_analyses FOR INSERT WITH CHECK (auth.uid() = user_id);
 
 -- Examination outlines policies
+DROP POLICY IF EXISTS "Users can view their own examination outlines" ON examination_outlines;
 CREATE POLICY "Users can view their own examination outlines"
     ON examination_outlines FOR SELECT USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can create examination outlines" ON examination_outlines;
 CREATE POLICY "Users can create examination outlines"
     ON examination_outlines FOR INSERT WITH CHECK (auth.uid() = user_id);
 
 -- Settlement narratives policies
+DROP POLICY IF EXISTS "Users can view their own settlement narratives" ON settlement_narratives;
 CREATE POLICY "Users can view their own settlement narratives"
     ON settlement_narratives FOR SELECT USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can create settlement narratives" ON settlement_narratives;
 CREATE POLICY "Users can create settlement narratives"
     ON settlement_narratives FOR INSERT WITH CHECK (auth.uid() = user_id);
 
@@ -131,6 +141,7 @@ BEGIN
 END;
 $$ language 'plpgsql';
 
+DROP TRIGGER IF EXISTS update_cases_updated_at ON cases;
 CREATE TRIGGER update_cases_updated_at
     BEFORE UPDATE ON cases
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
@@ -264,6 +275,7 @@ ALTER TABLE firm_config ENABLE ROW LEVEL SECURITY;
 ALTER TABLE usage_tracking ENABLE ROW LEVEL SECURITY;
 
 -- Organizations: members can view their own org
+DROP POLICY IF EXISTS "Users can view their organization" ON organizations;
 CREATE POLICY "Users can view their organization"
     ON organizations FOR SELECT
     USING (
@@ -271,6 +283,7 @@ CREATE POLICY "Users can view their organization"
     );
 
 -- Org members: users can see fellow members
+DROP POLICY IF EXISTS "Users can view org members" ON org_members;
 CREATE POLICY "Users can view org members"
     ON org_members FOR SELECT
     USING (
@@ -278,6 +291,7 @@ CREATE POLICY "Users can view org members"
     );
 
 -- Firm config: org members can view their firm config
+DROP POLICY IF EXISTS "Users can view their firm config" ON firm_config;
 CREATE POLICY "Users can view their firm config"
     ON firm_config FOR SELECT
     USING (
@@ -285,6 +299,7 @@ CREATE POLICY "Users can view their firm config"
     );
 
 -- Firm config: only admins/owners can update
+DROP POLICY IF EXISTS "Admins can update firm config" ON firm_config;
 CREATE POLICY "Admins can update firm config"
     ON firm_config FOR UPDATE
     USING (
@@ -295,6 +310,7 @@ CREATE POLICY "Admins can update firm config"
     );
 
 -- Usage tracking: org members can view
+DROP POLICY IF EXISTS "Users can view their usage" ON usage_tracking;
 CREATE POLICY "Users can view their usage"
     ON usage_tracking FOR SELECT
     USING (
@@ -302,6 +318,7 @@ CREATE POLICY "Users can view their usage"
     );
 
 -- Update cases policies for multi-tenant
+DROP POLICY IF EXISTS "Users can view their org cases" ON cases;
 CREATE POLICY "Users can view their org cases"
     ON cases FOR SELECT
     USING (
@@ -310,15 +327,19 @@ CREATE POLICY "Users can view their org cases"
     );
 
 -- Service role full access (for backend operations)
+DROP POLICY IF EXISTS "Service role full access to organizations" ON organizations;
 CREATE POLICY "Service role full access to organizations"
     ON organizations FOR ALL USING (true) WITH CHECK (true);
 
+DROP POLICY IF EXISTS "Service role full access to org_members" ON org_members;
 CREATE POLICY "Service role full access to org_members"
     ON org_members FOR ALL USING (true) WITH CHECK (true);
 
+DROP POLICY IF EXISTS "Service role full access to firm_config" ON firm_config;
 CREATE POLICY "Service role full access to firm_config"
     ON firm_config FOR ALL USING (true) WITH CHECK (true);
 
+DROP POLICY IF EXISTS "Service role full access to usage_tracking" ON usage_tracking;
 CREATE POLICY "Service role full access to usage_tracking"
     ON usage_tracking FOR ALL USING (true) WITH CHECK (true);
 
@@ -326,10 +347,12 @@ CREATE POLICY "Service role full access to usage_tracking"
 -- TRIGGERS
 -- ============================================================
 
+DROP TRIGGER IF EXISTS update_organizations_updated_at ON organizations;
 CREATE TRIGGER update_organizations_updated_at
     BEFORE UPDATE ON organizations
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+DROP TRIGGER IF EXISTS update_firm_config_updated_at ON firm_config;
 CREATE TRIGGER update_firm_config_updated_at
     BEFORE UPDATE ON firm_config
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
@@ -362,6 +385,7 @@ CREATE INDEX IF NOT EXISTS idx_agent_outputs_run ON agent_outputs(run_id);
 -- Allow service role full access (used by GitHub Actions runner)
 ALTER TABLE agent_outputs ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Service role has full access to agent_outputs" ON agent_outputs;
 CREATE POLICY "Service role has full access to agent_outputs"
     ON agent_outputs
     FOR ALL
@@ -369,12 +393,14 @@ CREATE POLICY "Service role has full access to agent_outputs"
     WITH CHECK (true);
 
 -- Grant access to authenticated users (read-only for the admin dashboard)
+DROP POLICY IF EXISTS "Authenticated users can view agent_outputs" ON agent_outputs;
 CREATE POLICY "Authenticated users can view agent_outputs"
     ON agent_outputs
     FOR SELECT
     TO authenticated
     USING (true);
 
+DROP POLICY IF EXISTS "Authenticated users can update agent_outputs status" ON agent_outputs;
 CREATE POLICY "Authenticated users can update agent_outputs status"
     ON agent_outputs
     FOR UPDATE
@@ -439,6 +465,7 @@ CREATE INDEX IF NOT EXISTS idx_uploaded_files_case   ON uploaded_files(case_id);
 CREATE INDEX IF NOT EXISTS idx_uploaded_files_status ON uploaded_files(status);
 
 -- updated_at trigger
+DROP TRIGGER IF EXISTS update_uploaded_files_updated_at ON uploaded_files;
 CREATE TRIGGER update_uploaded_files_updated_at
     BEFORE UPDATE ON uploaded_files
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
@@ -531,24 +558,28 @@ ALTER TABLE background_jobs  ENABLE ROW LEVEL SECURITY;
 
 -- ----- uploaded_files -----
 
+DROP POLICY IF EXISTS "Org members can view uploaded files" ON uploaded_files;
 CREATE POLICY "Org members can view uploaded files"
     ON uploaded_files FOR SELECT
     USING (
         org_id IN (SELECT om.org_id FROM org_members om WHERE om.user_id = auth.uid())
     );
 
+DROP POLICY IF EXISTS "Org members can upload files" ON uploaded_files;
 CREATE POLICY "Org members can upload files"
     ON uploaded_files FOR INSERT
     WITH CHECK (
         org_id IN (SELECT om.org_id FROM org_members om WHERE om.user_id = auth.uid())
     );
 
+DROP POLICY IF EXISTS "Org members can update their uploaded files" ON uploaded_files;
 CREATE POLICY "Org members can update their uploaded files"
     ON uploaded_files FOR UPDATE
     USING (
         org_id IN (SELECT om.org_id FROM org_members om WHERE om.user_id = auth.uid())
     );
 
+DROP POLICY IF EXISTS "Org members can delete their uploaded files" ON uploaded_files;
 CREATE POLICY "Org members can delete their uploaded files"
     ON uploaded_files FOR DELETE
     USING (
@@ -556,6 +587,7 @@ CREATE POLICY "Org members can delete their uploaded files"
     );
 
 -- Service role bypass for backend workers
+DROP POLICY IF EXISTS "Service role full access to uploaded_files" ON uploaded_files;
 CREATE POLICY "Service role full access to uploaded_files"
     ON uploaded_files FOR ALL
     TO service_role
@@ -564,18 +596,21 @@ CREATE POLICY "Service role full access to uploaded_files"
 
 -- ----- document_chunks -----
 
+DROP POLICY IF EXISTS "Org members can view document chunks" ON document_chunks;
 CREATE POLICY "Org members can view document chunks"
     ON document_chunks FOR SELECT
     USING (
         org_id IN (SELECT om.org_id FROM org_members om WHERE om.user_id = auth.uid())
     );
 
+DROP POLICY IF EXISTS "Org members can insert document chunks" ON document_chunks;
 CREATE POLICY "Org members can insert document chunks"
     ON document_chunks FOR INSERT
     WITH CHECK (
         org_id IN (SELECT om.org_id FROM org_members om WHERE om.user_id = auth.uid())
     );
 
+DROP POLICY IF EXISTS "Org members can delete document chunks" ON document_chunks;
 CREATE POLICY "Org members can delete document chunks"
     ON document_chunks FOR DELETE
     USING (
@@ -583,6 +618,7 @@ CREATE POLICY "Org members can delete document chunks"
     );
 
 -- Service role bypass for backend workers (embedding pipeline)
+DROP POLICY IF EXISTS "Service role full access to document_chunks" ON document_chunks;
 CREATE POLICY "Service role full access to document_chunks"
     ON document_chunks FOR ALL
     TO service_role
@@ -591,12 +627,14 @@ CREATE POLICY "Service role full access to document_chunks"
 
 -- ----- background_jobs -----
 
+DROP POLICY IF EXISTS "Org members can view their jobs" ON background_jobs;
 CREATE POLICY "Org members can view their jobs"
     ON background_jobs FOR SELECT
     USING (
         org_id IN (SELECT om.org_id FROM org_members om WHERE om.user_id = auth.uid())
     );
 
+DROP POLICY IF EXISTS "Org members can create jobs" ON background_jobs;
 CREATE POLICY "Org members can create jobs"
     ON background_jobs FOR INSERT
     WITH CHECK (
@@ -604,6 +642,7 @@ CREATE POLICY "Org members can create jobs"
     );
 
 -- Service role bypass for backend job runner
+DROP POLICY IF EXISTS "Service role full access to background_jobs" ON background_jobs;
 CREATE POLICY "Service role full access to background_jobs"
     ON background_jobs FOR ALL
     TO service_role
@@ -702,6 +741,7 @@ ON CONFLICT (id) DO NOTHING;
 -- ============================================================
 
 -- SELECT — Org members can read/download files in their org folder
+DROP POLICY IF EXISTS "Org members can read case files" ON storage.objects;
 CREATE POLICY "Org members can read case files"
     ON storage.objects FOR SELECT
     TO authenticated
@@ -713,6 +753,7 @@ CREATE POLICY "Org members can read case files"
     );
 
 -- INSERT — Org members can upload files to their org folder
+DROP POLICY IF EXISTS "Org members can upload case files" ON storage.objects;
 CREATE POLICY "Org members can upload case files"
     ON storage.objects FOR INSERT
     TO authenticated
@@ -724,6 +765,7 @@ CREATE POLICY "Org members can upload case files"
     );
 
 -- UPDATE — Org members can update/overwrite files in their org folder
+DROP POLICY IF EXISTS "Org members can update case files" ON storage.objects;
 CREATE POLICY "Org members can update case files"
     ON storage.objects FOR UPDATE
     TO authenticated
@@ -735,6 +777,7 @@ CREATE POLICY "Org members can update case files"
     );
 
 -- DELETE — Org members can delete files in their org folder
+DROP POLICY IF EXISTS "Org members can delete case files" ON storage.objects;
 CREATE POLICY "Org members can delete case files"
     ON storage.objects FOR DELETE
     TO authenticated
@@ -748,6 +791,7 @@ CREATE POLICY "Org members can delete case files"
 -- Service role bypass — backend workers need unrestricted access
 -- (Supabase service_role already bypasses RLS, but explicit policy
 -- is included for clarity and defense-in-depth.)
+DROP POLICY IF EXISTS "Service role full access to case files" ON storage.objects;
 CREATE POLICY "Service role full access to case files"
     ON storage.objects FOR ALL
     TO service_role
@@ -889,6 +933,7 @@ CREATE INDEX IF NOT EXISTS idx_intakes_org ON client_intakes(org_id);
 CREATE INDEX IF NOT EXISTS idx_intakes_status ON client_intakes(status);
 CREATE INDEX IF NOT EXISTS idx_intakes_case ON client_intakes(case_id);
 
+DROP TRIGGER IF EXISTS update_intakes_updated_at ON client_intakes;
 CREATE TRIGGER update_intakes_updated_at
     BEFORE UPDATE ON client_intakes
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
@@ -927,6 +972,7 @@ CREATE TABLE IF NOT EXISTS intake_causes_of_action (
 
 CREATE INDEX IF NOT EXISTS idx_coa_intake ON intake_causes_of_action(intake_id);
 
+DROP TRIGGER IF EXISTS update_coa_updated_at ON intake_causes_of_action;
 CREATE TRIGGER update_coa_updated_at
     BEFORE UPDATE ON intake_causes_of_action
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
@@ -997,6 +1043,7 @@ CREATE TABLE IF NOT EXISTS discovery_sets (
 
 CREATE INDEX IF NOT EXISTS idx_discovery_case ON discovery_sets(case_id);
 
+DROP TRIGGER IF EXISTS update_discovery_sets_updated_at ON discovery_sets;
 CREATE TRIGGER update_discovery_sets_updated_at
     BEFORE UPDATE ON discovery_sets
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
@@ -1066,6 +1113,7 @@ CREATE INDEX IF NOT EXISTS idx_deadlines_case ON case_deadlines(case_id);
 CREATE INDEX IF NOT EXISTS idx_deadlines_date ON case_deadlines(deadline_date);
 CREATE INDEX IF NOT EXISTS idx_deadlines_org ON case_deadlines(org_id);
 
+DROP TRIGGER IF EXISTS update_deadlines_updated_at ON case_deadlines;
 CREATE TRIGGER update_deadlines_updated_at
     BEFORE UPDATE ON case_deadlines
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
@@ -1123,6 +1171,7 @@ CREATE TABLE IF NOT EXISTS motions (
 CREATE INDEX IF NOT EXISTS idx_motions_case ON motions(case_id);
 CREATE INDEX IF NOT EXISTS idx_motions_hearing ON motions(hearing_date);
 
+DROP TRIGGER IF EXISTS update_motions_updated_at ON motions;
 CREATE TRIGGER update_motions_updated_at
     BEFORE UPDATE ON motions
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
@@ -1172,6 +1221,7 @@ CREATE TABLE IF NOT EXISTS contract_reviews (
 CREATE INDEX IF NOT EXISTS idx_contracts_org ON contract_reviews(org_id);
 CREATE INDEX IF NOT EXISTS idx_contracts_case ON contract_reviews(case_id);
 
+DROP TRIGGER IF EXISTS update_contracts_updated_at ON contract_reviews;
 CREATE TRIGGER update_contracts_updated_at
     BEFORE UPDATE ON contract_reviews
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
@@ -1223,6 +1273,7 @@ CREATE TABLE IF NOT EXISTS deposition_preps (
 
 CREATE INDEX IF NOT EXISTS idx_depo_case ON deposition_preps(case_id);
 
+DROP TRIGGER IF EXISTS update_depo_updated_at ON deposition_preps;
 CREATE TRIGGER update_depo_updated_at
     BEFORE UPDATE ON deposition_preps
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
@@ -1289,6 +1340,7 @@ CREATE INDEX IF NOT EXISTS idx_verdict_resolution ON verdict_library(resolution_
 CREATE INDEX IF NOT EXISTS idx_verdict_amount ON verdict_library(verdict_amount);
 CREATE INDEX IF NOT EXISTS idx_verdict_county ON verdict_library(county);
 
+DROP TRIGGER IF EXISTS update_verdict_updated_at ON verdict_library;
 CREATE TRIGGER update_verdict_updated_at
     BEFORE UPDATE ON verdict_library
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
@@ -1347,19 +1399,23 @@ BEGIN
         'contract_reviews', 'deposition_preps', 'case_timeline'
     ]) LOOP
         EXECUTE format(
-            'CREATE POLICY "Org members can view %1$s" ON %1$s FOR SELECT USING (org_id IN (SELECT om.org_id FROM org_members om WHERE om.user_id = auth.uid()))',
+            'DROP POLICY IF EXISTS "Org members can view %1$s" ON %1$s;
+CREATE POLICY "Org members can view %1$s" ON %1$s FOR SELECT USING (org_id IN (SELECT om.org_id FROM org_members om WHERE om.user_id = auth.uid()))',
             tbl
         );
         EXECUTE format(
-            'CREATE POLICY "Org members can insert %1$s" ON %1$s FOR INSERT WITH CHECK (org_id IN (SELECT om.org_id FROM org_members om WHERE om.user_id = auth.uid()))',
+            'DROP POLICY IF EXISTS "Org members can insert %1$s" ON %1$s;
+CREATE POLICY "Org members can insert %1$s" ON %1$s FOR INSERT WITH CHECK (org_id IN (SELECT om.org_id FROM org_members om WHERE om.user_id = auth.uid()))',
             tbl
         );
         EXECUTE format(
-            'CREATE POLICY "Org members can update %1$s" ON %1$s FOR UPDATE USING (org_id IN (SELECT om.org_id FROM org_members om WHERE om.user_id = auth.uid()))',
+            'DROP POLICY IF EXISTS "Org members can update %1$s" ON %1$s;
+CREATE POLICY "Org members can update %1$s" ON %1$s FOR UPDATE USING (org_id IN (SELECT om.org_id FROM org_members om WHERE om.user_id = auth.uid()))',
             tbl
         );
         EXECUTE format(
-            'CREATE POLICY "Service role full access to %1$s" ON %1$s FOR ALL TO service_role USING (true) WITH CHECK (true)',
+            'DROP POLICY IF EXISTS "Service role full access to %1$s" ON %1$s;
+CREATE POLICY "Service role full access to %1$s" ON %1$s FOR ALL TO service_role USING (true) WITH CHECK (true)',
             tbl
         );
     END LOOP;
@@ -1367,20 +1423,26 @@ END
 $$;
 
 -- Verdict library: globally readable, org-scoped for writes
+DROP POLICY IF EXISTS "Anyone can view verdict library" ON verdict_library;
 CREATE POLICY "Anyone can view verdict library"
     ON verdict_library FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Org members can insert verdicts" ON verdict_library;
 CREATE POLICY "Org members can insert verdicts"
     ON verdict_library FOR INSERT
     WITH CHECK (org_id IN (SELECT om.org_id FROM org_members om WHERE om.user_id = auth.uid()) OR org_id IS NULL);
+DROP POLICY IF EXISTS "Service role full access to verdict_library" ON verdict_library;
 CREATE POLICY "Service role full access to verdict_library"
     ON verdict_library FOR ALL TO service_role USING (true) WITH CHECK (true);
 
 -- Discovery items inherit from sets
+DROP POLICY IF EXISTS "Org members can view discovery items" ON discovery_items;
 CREATE POLICY "Org members can view discovery items"
     ON discovery_items FOR SELECT
     USING (set_id IN (SELECT ds.id FROM discovery_sets ds JOIN org_members om ON ds.org_id = om.org_id WHERE om.user_id = auth.uid()));
+DROP POLICY IF EXISTS "Org members can insert discovery items" ON discovery_items;
 CREATE POLICY "Org members can insert discovery items"
     ON discovery_items FOR INSERT
     WITH CHECK (set_id IN (SELECT ds.id FROM discovery_sets ds JOIN org_members om ON ds.org_id = om.org_id WHERE om.user_id = auth.uid()));
+DROP POLICY IF EXISTS "Service role full access to discovery_items" ON discovery_items;
 CREATE POLICY "Service role full access to discovery_items"
     ON discovery_items FOR ALL TO service_role USING (true) WITH CHECK (true);
