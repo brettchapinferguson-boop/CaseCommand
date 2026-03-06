@@ -231,8 +231,9 @@ def load_codebase_context() -> str:
 
 async def call_claude(system: str, user_message: str) -> str:
     """Call the Anthropic Messages API with retry on rate limits."""
-    async with httpx.AsyncClient(timeout=120.0) as client:
-        for attempt in range(5):
+    max_retries = 8
+    async with httpx.AsyncClient(timeout=180.0) as client:
+        for attempt in range(max_retries):
             resp = await client.post(
                 "https://api.anthropic.com/v1/messages",
                 headers={
@@ -247,9 +248,9 @@ async def call_claude(system: str, user_message: str) -> str:
                     "messages": [{"role": "user", "content": user_message}],
                 },
             )
-            if resp.status_code == 429:
-                wait = 2 ** attempt * 15  # 15s, 30s, 60s, 120s, 240s
-                print(f"    Rate limited — retrying in {wait}s (attempt {attempt + 1}/5)")
+            if resp.status_code == 429 or resp.status_code == 529:
+                wait = min(2 ** attempt * 10, 300)  # 10s, 20s, 40s, 80s, 160s, 300s, 300s, 300s
+                print(f"    Rate limited ({resp.status_code}) — waiting {wait}s (attempt {attempt + 1}/{max_retries})")
                 await asyncio.sleep(wait)
                 continue
             resp.raise_for_status()
@@ -257,9 +258,7 @@ async def call_claude(system: str, user_message: str) -> str:
             return "".join(
                 block["text"] for block in data.get("content", []) if block.get("type") == "text"
             )
-        # Final attempt failed
-        resp.raise_for_status()
-        return ""
+        raise RuntimeError(f"Failed after {max_retries} retries — last status {resp.status_code}")
 
 
 # ---------------------------------------------------------------------------
@@ -400,7 +399,7 @@ async def main():
     results = []
     for i, agent in enumerate(agents_to_run):
         if i > 0:
-            await asyncio.sleep(15)  # 15s pause between agents
+            await asyncio.sleep(30)  # 30s pause between agents to stay under rate limits
         result = await run_agent(agent, codebase)
         results.append(result)
 
