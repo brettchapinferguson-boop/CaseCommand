@@ -44,6 +44,13 @@ from src.routes import (
     channel_routes,
     agent_lab_routes,
     upload_routes,
+    intake_routes,
+    discovery_routes,
+    motion_routes,
+    contract_routes,
+    deposition_routes,
+    calendar_routes,
+    verdict_routes,
 )
 
 logger = logging.getLogger(__name__)
@@ -106,6 +113,15 @@ def create_app() -> FastAPI:
     app.include_router(agent_lab_routes.router)
     app.include_router(upload_routes.router)
     app.include_router(upload_routes.jobs_router)
+
+    # --- Litigation Lifecycle Modules ---
+    app.include_router(intake_routes.router)
+    app.include_router(discovery_routes.router)
+    app.include_router(motion_routes.router)
+    app.include_router(contract_routes.router)
+    app.include_router(deposition_routes.router)
+    app.include_router(calendar_routes.router)
+    app.include_router(verdict_routes.router)
 
     # --- Startup event: launch background job worker ---
     @app.on_event("startup")

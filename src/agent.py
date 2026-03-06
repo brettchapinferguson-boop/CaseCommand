@@ -143,6 +143,178 @@ TOOLS = [
             "required": ["case_name", "case_type", "client_name", "opposing_party"],
         },
     },
+    # --- Intake ---
+    {
+        "name": "analyze_intake",
+        "description": (
+            "Analyze a potential client intake for case viability. Identifies causes of action, "
+            "maps facts to prima facie elements, checks statute of limitations, flags affirmative "
+            "defenses, and generates a viability scorecard. Use when the user describes a potential "
+            "case or wants to evaluate whether to take a case."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "client_first_name": {"type": "string", "description": "Client's first name"},
+                "client_last_name": {"type": "string", "description": "Client's last name"},
+                "employer_name": {"type": "string", "description": "Employer's name"},
+                "job_title": {"type": "string", "description": "Client's job title"},
+                "incident_description": {"type": "string", "description": "Description of what happened"},
+                "incident_date": {"type": "string", "description": "Date of incident (YYYY-MM-DD)"},
+                "termination_date": {"type": "string", "description": "Date of termination if applicable (YYYY-MM-DD)"},
+                "protected_class": {
+                    "type": "array", "items": {"type": "string"},
+                    "description": "Protected classes: race, sex, age, disability, religion, national_origin, sexual_orientation, gender_identity",
+                },
+                "adverse_actions": {
+                    "type": "array", "items": {"type": "string"},
+                    "description": "Adverse actions: termination, demotion, harassment, retaliation, failure_to_accommodate",
+                },
+                "annual_salary": {"type": "number", "description": "Annual salary"},
+                "dfeh_filed": {"type": "boolean", "description": "Whether DFEH complaint has been filed"},
+                "right_to_sue": {"type": "boolean", "description": "Whether right-to-sue letter has been received"},
+            },
+            "required": ["client_first_name", "client_last_name", "incident_description"],
+        },
+    },
+    # --- Discovery ---
+    {
+        "name": "generate_discovery",
+        "description": (
+            "Generate a discovery set for a case. Can create form interrogatories, special "
+            "interrogatories, requests for production, requests for admission, deposition notices, "
+            "or subpoenas. Use when the user asks to draft discovery or needs to propound discovery."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "case_id": {"type": "string", "description": "Case ID to generate discovery for"},
+                "set_type": {
+                    "type": "string",
+                    "description": "Type: form_interrogatories, special_interrogatories, rfp, rfa, deposition_notice, subpoena_duces_tecum",
+                },
+                "target_elements": {
+                    "type": "array", "items": {"type": "string"},
+                    "description": "Specific prima facie elements to target (optional)",
+                },
+            },
+            "required": ["case_id", "set_type"],
+        },
+    },
+    # --- Motions ---
+    {
+        "name": "draft_motion",
+        "description": (
+            "Draft a motion or pleading. Supports demurrers, motions to compel, MSJ/MSA, "
+            "motions in limine, motions to strike, ex parte applications, complaints, "
+            "oppositions, and replies. Auto-calculates hearing dates and filing deadlines."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "case_id": {"type": "string", "description": "Case ID"},
+                "motion_type": {
+                    "type": "string",
+                    "description": "Type: complaint, demurrer, motion_to_compel, msj, msa, motion_in_limine, motion_to_strike, ex_parte, opposition, reply, motion_for_sanctions",
+                },
+                "filing_party": {"type": "string", "description": "plaintiff or defendant"},
+                "additional_context": {"type": "string", "description": "Additional context or instructions"},
+            },
+            "required": ["case_id", "motion_type"],
+        },
+    },
+    # --- Oversight ---
+    {
+        "name": "motion_oversight",
+        "description": (
+            "Run the oversight agent on a case to identify motion opportunities, "
+            "upcoming deadlines, strategic recommendations, and potential vulnerabilities. "
+            "Use when the user asks about case strategy or what motions should be filed."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "case_id": {"type": "string", "description": "Case ID to analyze"},
+            },
+            "required": ["case_id"],
+        },
+    },
+    # --- Contract Review ---
+    {
+        "name": "review_contract",
+        "description": (
+            "Review a contract for risk flags, missing clauses, and redline suggestions. "
+            "Supports NDAs, protective orders, settlement agreements, and employment agreements. "
+            "Use when the user wants to review or analyze a contract."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "contract_text": {"type": "string", "description": "The full text of the contract"},
+                "contract_type": {
+                    "type": "string",
+                    "description": "Type: nda, protective_order, settlement_agreement, employment_agreement",
+                },
+                "case_id": {"type": "string", "description": "Optional case ID if contract is case-related"},
+                "reviewing_for": {"type": "string", "description": "Perspective: plaintiff or defendant"},
+            },
+            "required": ["contract_text", "contract_type"],
+        },
+    },
+    # --- Deposition Prep ---
+    {
+        "name": "depo_prep",
+        "description": (
+            "Generate deposition preparation materials. Creates outlines for taking or "
+            "defending depositions, with areas of inquiry, key questions, and strategic notes. "
+            "Also supports depo practice sessions and transcript analysis."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "case_id": {"type": "string", "description": "Case ID"},
+                "deponent_name": {"type": "string", "description": "Name of the deponent"},
+                "deponent_role": {"type": "string", "description": "Role: plaintiff, defendant, witness, expert, corporate_designee"},
+                "depo_type": {"type": "string", "description": "taking (you're deposing them) or defending (your client is being deposed)"},
+                "areas_of_inquiry": {
+                    "type": "array", "items": {"type": "string"},
+                    "description": "Specific areas to focus on (optional)",
+                },
+            },
+            "required": ["case_id", "deponent_name", "deponent_role"],
+        },
+    },
+    # --- Case Valuation ---
+    {
+        "name": "valuate_case",
+        "description": (
+            "Generate a data-driven case valuation using comparable verdicts and settlements "
+            "from the verdict library. Provides estimated value range, comparable analysis, "
+            "damages breakdown, and settlement recommendations."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "case_id": {"type": "string", "description": "Case ID to valuate"},
+            },
+            "required": ["case_id"],
+        },
+    },
+    # --- Calendar ---
+    {
+        "name": "get_deadlines",
+        "description": (
+            "Get upcoming deadlines and calendar events. Shows deadlines across all cases "
+            "or for a specific case, with urgency classification and color coding."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "case_id": {"type": "string", "description": "Optional case ID to scope deadlines"},
+                "days_ahead": {"type": "integer", "description": "How many days ahead to look (default 30)"},
+            },
+        },
+    },
 ]
 
 
@@ -193,15 +365,47 @@ When drafting documents, use this firm's identity in headers and signature block
             f"{attorney_name}{' (SBN ' + bar_number + ')' if bar_number else ''}, {firm_name}",
         )
 
-    doc_intelligence = """
+    capabilities = """
 
 ## Document Intelligence
 You have access to documents uploaded to cases. When users ask about specific
 facts, testimony, contract terms, or evidence, use the search_case_documents
 tool to find relevant excerpts. Always cite the source document and page number.
+
+## Full Litigation Lifecycle
+You manage the complete litigation lifecycle. Your capabilities include:
+
+**Intake & Screening**: Use `analyze_intake` to evaluate potential cases. You identify
+causes of action, map facts to prima facie elements (green checkmark = satisfied,
+red flag = needs attention), check statute of limitations, and flag fatal affirmative
+defenses. When a case is greenlighted, everything flows from the intake data.
+
+**Complaint Generation**: Use `draft_motion` with type "complaint" to auto-generate
+complaints from intake data. The complaint is the central document from which all
+dates, discovery, and strategy flow.
+
+**Discovery**: Use `generate_discovery` to draft discovery sets. At complaint filing,
+you auto-generate the offensive package (Form Interrogatories, Special Interrogatories,
+RFPs, RFAs). As new information enters the case, discovery is automatically updated.
+
+**Law & Motion**: Use `draft_motion` for any motion type. Use `motion_oversight` to
+proactively identify motion opportunities and deadlines.
+
+**Contract Review**: Use `review_contract` for NDAs, protective orders, settlement
+agreements, and employment agreements. Identifies risks, missing clauses, and
+generates redline suggestions.
+
+**Deposition Prep**: Use `depo_prep` to generate deposition outlines for taking or
+defending depositions. Supports practice sessions and transcript analysis.
+
+**Case Valuation**: Use `valuate_case` for data-driven valuations using comparable
+verdicts and settlements from the library.
+
+**Calendar**: Use `get_deadlines` to show upcoming deadlines with urgency levels.
+All deadlines are auto-computed from case events (filings, discovery, motions).
 """
 
-    return base + firm_section + doc_intelligence
+    return base + firm_section + capabilities
 
 
 # ---------------------------------------------------------------------------
@@ -337,6 +541,149 @@ async def _execute_tool(name: str, input_data: dict, context: dict) -> dict:
             }
         except Exception as e:
             return {"status": "error", "message": f"Document search failed: {e}"}
+
+    # --- Intake Analysis ---
+    if name == "analyze_intake":
+        if not supabase:
+            return {"status": "error", "message": "Database not available."}
+        try:
+            from src.intake.engine import IntakeAnalyzer
+            analyzer = IntakeAnalyzer(supabase_client=supabase)
+            analysis = await analyzer.analyze_intake(input_data)
+            if org_id:
+                await analyzer.save_intake(
+                    intake_data=input_data,
+                    analysis=analysis,
+                    org_id=org_id,
+                    user_id=context.get("user_id"),
+                )
+            return {"status": "success", **analysis}
+        except Exception as e:
+            return {"status": "error", "message": f"Intake analysis failed: {e}"}
+
+    # --- Discovery Generation ---
+    if name == "generate_discovery":
+        if not supabase:
+            return {"status": "error", "message": "Database not available."}
+        try:
+            from src.discovery.generator import DiscoveryGenerator
+            gen = DiscoveryGenerator(supabase_client=supabase)
+            result = await gen.generate_discovery_set(
+                case_id=input_data["case_id"],
+                org_id=org_id or "",
+                set_type=input_data["set_type"],
+                target_elements=input_data.get("target_elements", []),
+            )
+            return {"status": "success", **result}
+        except Exception as e:
+            return {"status": "error", "message": f"Discovery generation failed: {e}"}
+
+    # --- Motion Drafting ---
+    if name == "draft_motion":
+        if not supabase:
+            return {"status": "error", "message": "Database not available."}
+        try:
+            from src.motions.engine import MotionEngine
+            engine = MotionEngine(supabase_client=supabase)
+            if input_data["motion_type"] == "complaint":
+                result = await engine.generate_complaint(
+                    case_id=input_data["case_id"],
+                    org_id=org_id or "",
+                )
+            else:
+                result = await engine.draft_motion(
+                    case_id=input_data["case_id"],
+                    org_id=org_id or "",
+                    motion_type=input_data["motion_type"],
+                    filing_party=input_data.get("filing_party", "plaintiff"),
+                    additional_context=input_data.get("additional_context", ""),
+                )
+            return {"status": "success", **result}
+        except Exception as e:
+            return {"status": "error", "message": f"Motion drafting failed: {e}"}
+
+    # --- Motion Oversight ---
+    if name == "motion_oversight":
+        if not supabase:
+            return {"status": "error", "message": "Database not available."}
+        try:
+            from src.motions.engine import MotionEngine
+            engine = MotionEngine(supabase_client=supabase)
+            result = await engine.oversight_analysis(
+                case_id=input_data["case_id"],
+                org_id=org_id or "",
+            )
+            return {"status": "success", **result}
+        except Exception as e:
+            return {"status": "error", "message": f"Oversight analysis failed: {e}"}
+
+    # --- Contract Review ---
+    if name == "review_contract":
+        if not supabase:
+            return {"status": "error", "message": "Database not available."}
+        try:
+            from src.contracts.reviewer import ContractReviewer
+            reviewer = ContractReviewer(supabase_client=supabase)
+            result = await reviewer.review_contract(
+                contract_text=input_data["contract_text"],
+                contract_type=input_data["contract_type"],
+                case_id=input_data.get("case_id"),
+                org_id=org_id,
+                reviewing_for=input_data.get("reviewing_for", "plaintiff"),
+            )
+            return {"status": "success", **result}
+        except Exception as e:
+            return {"status": "error", "message": f"Contract review failed: {e}"}
+
+    # --- Deposition Prep ---
+    if name == "depo_prep":
+        if not supabase:
+            return {"status": "error", "message": "Database not available."}
+        try:
+            from src.deposition.prep import DepositionPrep
+            prep = DepositionPrep(supabase_client=supabase)
+            result = await prep.generate_outline(
+                case_id=input_data["case_id"],
+                org_id=org_id or "",
+                deponent_name=input_data["deponent_name"],
+                deponent_role=input_data["deponent_role"],
+                depo_type=input_data.get("depo_type", "taking"),
+                areas_of_inquiry=input_data.get("areas_of_inquiry", []),
+            )
+            return {"status": "success", **result}
+        except Exception as e:
+            return {"status": "error", "message": f"Depo prep failed: {e}"}
+
+    # --- Case Valuation ---
+    if name == "valuate_case":
+        if not supabase:
+            return {"status": "error", "message": "Database not available."}
+        try:
+            from src.verdicts.scraper import VerdictLibrary
+            lib = VerdictLibrary(supabase_client=supabase)
+            result = await lib.valuate_case(
+                case_id=input_data["case_id"],
+                org_id=org_id or "",
+            )
+            return {"status": "success", **result}
+        except Exception as e:
+            return {"status": "error", "message": f"Case valuation failed: {e}"}
+
+    # --- Calendar / Deadlines ---
+    if name == "get_deadlines":
+        if not supabase:
+            return {"status": "error", "message": "Database not available."}
+        try:
+            from src.calendar.engine import CalendarEngine
+            cal = CalendarEngine(supabase_client=supabase)
+            deadlines = cal.get_upcoming_deadlines(
+                org_id=org_id or "",
+                days_ahead=input_data.get("days_ahead", 30),
+                case_id=input_data.get("case_id"),
+            )
+            return {"status": "success", "deadlines": deadlines, "count": len(deadlines)}
+        except Exception as e:
+            return {"status": "error", "message": f"Deadline retrieval failed: {e}"}
 
     return {"status": "error", "message": f"Unknown tool: {name}"}
 
