@@ -27,6 +27,9 @@ class Settings:
     CLAUDE_MODEL: str = os.environ.get("CLAUDE_MODEL", "claude-sonnet-4-6")
     ANTHROPIC_BASE_URL: str = "https://api.anthropic.com/v1"
 
+    # --- Voyage AI (embeddings) ---
+    VOYAGE_API_KEY: str = os.environ.get("VOYAGE_API_KEY", "")
+
     # --- Supabase ---
     SUPABASE_URL: str = os.environ.get("SUPABASE_URL", "")
     SUPABASE_SECRET_KEY: str = (

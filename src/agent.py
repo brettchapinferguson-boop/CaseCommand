@@ -92,6 +92,29 @@ TOOLS = [
         },
     },
     {
+        "name": "search_case_documents",
+        "description": (
+            "Search through uploaded case documents (depositions, exhibits, "
+            "pleadings, contracts, etc.) using semantic search. Use this when "
+            "the user asks about specific facts, quotes, or details from their "
+            "case files. Returns relevant excerpts with source information."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "The search query — what to look for in the documents.",
+                },
+                "case_id": {
+                    "type": "string",
+                    "description": "Optional case ID to scope the search to a specific case.",
+                },
+            },
+            "required": ["query"],
+        },
+    },
+    {
         "name": "create_case",
         "description": (
             "Create a new case in the database. Use when the user wants to "
@@ -170,7 +193,15 @@ When drafting documents, use this firm's identity in headers and signature block
             f"{attorney_name}{' (SBN ' + bar_number + ')' if bar_number else ''}, {firm_name}",
         )
 
-    return base + firm_section
+    doc_intelligence = """
+
+## Document Intelligence
+You have access to documents uploaded to cases. When users ask about specific
+facts, testimony, contract terms, or evidence, use the search_case_documents
+tool to find relevant excerpts. Always cite the source document and page number.
+"""
+
+    return base + firm_section + doc_intelligence
 
 
 # ---------------------------------------------------------------------------
@@ -274,6 +305,38 @@ async def _execute_tool(name: str, input_data: dict, context: dict) -> dict:
             data["user_id"] = context["user_id"]
         result = supabase.table("cases").insert(data).execute()
         return {"status": "success", "case": result.data[0] if result.data else data}
+
+    if name == "search_case_documents":
+        if not supabase:
+            return {"status": "error", "message": "Database not available."}
+        try:
+            from src.rag.query import RAGQueryEngine
+
+            engine = RAGQueryEngine(supabase_client=supabase)
+            results = await engine.search(
+                query=input_data["query"],
+                org_id=org_id,
+                case_id=input_data.get("case_id"),
+            )
+            if not results:
+                return {
+                    "status": "success",
+                    "results": [],
+                    "message": "No matching documents found.",
+                }
+            formatted = []
+            for r in results:
+                formatted.append(
+                    f"[Source: {r['source']} | Chunk {r['chunk_index']} | "
+                    f"Score: {r['similarity']}]\n{r['content']}"
+                )
+            return {
+                "status": "success",
+                "results": formatted,
+                "count": len(formatted),
+            }
+        except Exception as e:
+            return {"status": "error", "message": f"Document search failed: {e}"}
 
     return {"status": "error", "message": f"Unknown tool: {name}"}
 

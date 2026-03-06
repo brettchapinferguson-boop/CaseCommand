@@ -28,6 +28,7 @@ from supabase import create_client
 from src.config import get_settings
 from src.api_client import CaseCommandAI
 from src.storage.documents import DocumentStore
+from src.storage.file_upload import FileUploadService
 from src.middleware.rate_limit import limiter
 from src.middleware.usage import UsageTracker
 from src.billing.stripe_service import StripeService
@@ -42,6 +43,7 @@ from src.routes import (
     billing_routes,
     channel_routes,
     agent_lab_routes,
+    upload_routes,
 )
 
 logger = logging.getLogger(__name__)
@@ -89,6 +91,7 @@ def create_app() -> FastAPI:
     app.state.supabase = supabase
     app.state.ai_client = CaseCommandAI()
     app.state.doc_store = DocumentStore(supabase_client=supabase)
+    app.state.file_upload_service = FileUploadService(supabase_client=supabase)
     app.state.usage_tracker = UsageTracker(supabase)
     app.state.stripe_service = StripeService(supabase) if settings.STRIPE_SECRET_KEY else None
 
@@ -101,6 +104,14 @@ def create_app() -> FastAPI:
     app.include_router(billing_routes.router)
     app.include_router(channel_routes.router)
     app.include_router(agent_lab_routes.router)
+    app.include_router(upload_routes.router)
+    app.include_router(upload_routes.jobs_router)
+
+    # --- Startup event: launch background job worker ---
+    @app.on_event("startup")
+    async def _start_background_workers():
+        from src.jobs.startup import start_job_worker
+        await start_job_worker(app)
 
     # --- Legacy v0 endpoints (backward compat — will be removed) ---
     _register_legacy_routes(app)
