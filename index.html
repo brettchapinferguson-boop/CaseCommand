@@ -555,6 +555,59 @@ ${e.response}`).join("\n---\n")}`,a=await t2(t,r);if(u(!1),a.success){p(a.text);
   </div>
 </div>
 
+<!-- Agent Lab Panel -->
+<div id="cc-agentlab-overlay" class="cc-panel-overlay" style="display:none" onclick="if(event.target===this)ccCloseAgentLab()">
+  <div class="cc-panel" style="max-width:1100px">
+    <div class="cc-panel-hdr">
+      <div>
+        <h2>🤖 Agent Lab</h2>
+        <p>Review AI agent outputs — code fixes, security findings, legal updates, and feature suggestions</p>
+      </div>
+      <button class="cc-close-btn" onclick="ccCloseAgentLab()">✕ Close</button>
+    </div>
+    <div class="cc-panel-body" style="padding:16px">
+      <!-- Summary Stats -->
+      <div id="cc-al-stats" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px">
+        <div style="background:#161b22;border:1px solid #30363d;border-radius:8px;padding:14px;text-align:center">
+          <div style="font-size:24px;font-weight:700;color:#e6edf3" id="cc-al-total">-</div>
+          <div style="font-size:11px;color:#8b949e;margin-top:2px">Total Outputs</div>
+        </div>
+        <div style="background:#161b22;border:1px solid #30363d;border-radius:8px;padding:14px;text-align:center">
+          <div style="font-size:24px;font-weight:700;color:#f0883e" id="cc-al-pending">-</div>
+          <div style="font-size:11px;color:#8b949e;margin-top:2px">Pending Review</div>
+        </div>
+        <div style="background:#161b22;border:1px solid #30363d;border-radius:8px;padding:14px;text-align:center">
+          <div style="font-size:24px;font-weight:700;color:#3fb950" id="cc-al-applied">-</div>
+          <div style="font-size:11px;color:#8b949e;margin-top:2px">Applied</div>
+        </div>
+        <div style="background:#161b22;border:1px solid #30363d;border-radius:8px;padding:14px;text-align:center">
+          <div style="font-size:24px;font-weight:700;color:#8b949e" id="cc-al-dismissed">-</div>
+          <div style="font-size:11px;color:#8b949e;margin-top:2px">Dismissed</div>
+        </div>
+      </div>
+
+      <!-- Filters -->
+      <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
+        <select id="cc-al-filter-status" onchange="ccAlLoadOutputs()" style="background:#0d1117;border:1px solid #30363d;color:#e6edf3;padding:6px 10px;border-radius:6px;font-size:12px">
+          <option value="">All Statuses</option>
+          <option value="pending" selected>Pending</option>
+          <option value="applied">Applied</option>
+          <option value="dismissed">Dismissed</option>
+        </select>
+        <select id="cc-al-filter-agent" onchange="ccAlLoadOutputs()" style="background:#0d1117;border:1px solid #30363d;color:#e6edf3;padding:6px 10px;border-radius:6px;font-size:12px">
+          <option value="">All Agents</option>
+        </select>
+        <button onclick="ccAlLoadOutputs()" style="background:#21262d;border:1px solid #30363d;color:#e6edf3;padding:6px 14px;border-radius:6px;font-size:12px;cursor:pointer">Refresh</button>
+      </div>
+
+      <!-- Output Cards -->
+      <div id="cc-al-outputs" style="display:flex;flex-direction:column;gap:10px;max-height:55vh;overflow-y:auto;padding-right:4px">
+        <div style="text-align:center;color:#8b949e;padding:40px;font-size:13px">Loading agent outputs...</div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Toast -->
 <div id="cc-toast"></div>
 
@@ -567,10 +620,12 @@ ${e.response}`).join("\n---\n")}`,a=await t2(t,r);if(u(!1),a.success){p(a.text);
   window.ccCloseOutline= () => document.getElementById('cc-outline-overlay').style.display = 'none';
   window.ccOpenNewCase = () => document.getElementById('cc-newcase-overlay').style.display = 'flex';
   window.ccCloseNewCase= () => { document.getElementById('cc-newcase-overlay').style.display = 'none'; document.getElementById('cc-file-name').textContent = ''; document.getElementById('cc-newcase-submit').disabled = true; };
+  window.ccOpenAgentLab = () => { document.getElementById('cc-agentlab-overlay').style.display = 'flex'; ccAlLoadSummary(); ccAlLoadOutputs(); };
+  window.ccCloseAgentLab = () => document.getElementById('cc-agentlab-overlay').style.display = 'none';
 
   // ESC key closes panels
   document.addEventListener('keydown', e => {
-    if (e.key === 'Escape') { ccCloseInt(); ccCloseOutline(); ccCloseNewCase(); }
+    if (e.key === 'Escape') { ccCloseInt(); ccCloseOutline(); ccCloseNewCase(); ccCloseAgentLab(); }
   });
 
   // ── Inject nav buttons ──────────────────────────────────────────────────
@@ -601,10 +656,16 @@ ${e.response}`).join("\n---\n")}`,a=await t2(t,r);if(u(!1),a.success){p(a.text);
     newBtn.innerHTML = '➕ <span>New Case</span>';
     newBtn.onclick = ccOpenNewCase;
 
+    const alBtn = document.createElement('button');
+    alBtn.className = 'cc-nav-ext-btn';
+    alBtn.innerHTML = '🤖 <span>Agent Lab</span>';
+    alBtn.onclick = ccOpenAgentLab;
+
     target.appendChild(sep);
     target.appendChild(intBtn);
     target.appendChild(olBtn);
     target.appendChild(newBtn);
+    target.appendChild(alBtn);
   }
 
   const observer = new MutationObserver(() => { injectNavButtons(); });
@@ -857,5 +918,126 @@ ${e.response}`).join("\n---\n")}`,a=await t2(t,r);if(u(!1),a.success){p(a.text);
   function ccEsc(s) {
     return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
+
+  // ── Agent Lab ────────────────────────────────────────────────────────────
+  window.ccAlLoadSummary = async function() {
+    try {
+      const res = await fetch('/api/agent-outputs/summary');
+      if (!res.ok) throw new Error(res.status);
+      const data = await res.json();
+      document.getElementById('cc-al-total').textContent = data.total;
+      document.getElementById('cc-al-pending').textContent = data.pending;
+      document.getElementById('cc-al-applied').textContent = data.applied;
+      document.getElementById('cc-al-dismissed').textContent = data.dismissed;
+
+      // Populate agent filter dropdown
+      const sel = document.getElementById('cc-al-filter-agent');
+      const current = sel.value;
+      sel.innerHTML = '<option value="">All Agents</option>';
+      Object.keys(data.agents || {}).sort().forEach(name => {
+        const opt = document.createElement('option');
+        opt.value = name;
+        opt.textContent = name + ' (' + data.agents[name].total + ')';
+        sel.appendChild(opt);
+      });
+      sel.value = current;
+    } catch(e) {
+      console.error('Agent Lab summary error:', e);
+    }
+  };
+
+  const _alPriorityColors = { critical: '#f85149', high: '#f0883e', normal: '#8b949e', low: '#484f58' };
+  const _alTypeIcons = { code_fix: '🔧', analysis: '🔍', suggestion: '💡', knowledge: '📚' };
+
+  window.ccAlLoadOutputs = async function() {
+    const container = document.getElementById('cc-al-outputs');
+    const status = document.getElementById('cc-al-filter-status').value;
+    const agent = document.getElementById('cc-al-filter-agent').value;
+
+    let url = '/api/agent-outputs?limit=50';
+    if (status) url += '&status=' + encodeURIComponent(status);
+    if (agent) url += '&agent=' + encodeURIComponent(agent);
+
+    try {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(res.status);
+      const outputs = await res.json();
+
+      if (!outputs.length) {
+        container.innerHTML = '<div style="text-align:center;color:#8b949e;padding:40px;font-size:13px">No agent outputs found. Run the Agent Team from GitHub Actions to generate outputs.</div>';
+        return;
+      }
+
+      container.innerHTML = outputs.map(o => {
+        const pColor = _alPriorityColors[o.priority] || '#8b949e';
+        const icon = _alTypeIcons[o.output_type] || '📄';
+        const date = new Date(o.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+        const statusBadge = o.status === 'pending'
+          ? '<span style="background:#f0883e22;color:#f0883e;padding:2px 8px;border-radius:4px;font-size:10px">PENDING</span>'
+          : o.status === 'applied'
+          ? '<span style="background:#3fb95022;color:#3fb950;padding:2px 8px;border-radius:4px;font-size:10px">APPLIED</span>'
+          : '<span style="background:#484f5822;color:#8b949e;padding:2px 8px;border-radius:4px;font-size:10px">DISMISSED</span>';
+
+        const actions = o.status === 'pending' ? `
+          <div style="display:flex;gap:6px;margin-top:10px">
+            <button onclick="ccAlUpdateOutput('${o.id}','applied')" style="background:#238636;border:none;color:#fff;padding:5px 12px;border-radius:5px;font-size:11px;cursor:pointer">Mark Applied</button>
+            <button onclick="ccAlUpdateOutput('${o.id}','dismissed')" style="background:#21262d;border:1px solid #30363d;color:#8b949e;padding:5px 12px;border-radius:5px;font-size:11px;cursor:pointer">Dismiss</button>
+            <button onclick="ccAlCopyContent(this)" data-content="${btoa(unescape(encodeURIComponent(o.content)))}" style="background:#21262d;border:1px solid #30363d;color:#e6edf3;padding:5px 12px;border-radius:5px;font-size:11px;cursor:pointer">Copy Content</button>
+          </div>` : `
+          <div style="display:flex;gap:6px;margin-top:10px">
+            <button onclick="ccAlCopyContent(this)" data-content="${btoa(unescape(encodeURIComponent(o.content)))}" style="background:#21262d;border:1px solid #30363d;color:#e6edf3;padding:5px 12px;border-radius:5px;font-size:11px;cursor:pointer">Copy Content</button>
+          </div>`;
+
+        const preview = ccEsc((o.content || '').substring(0, 300)) + (o.content && o.content.length > 300 ? '...' : '');
+
+        return `<div style="background:#0d1117;border:1px solid #30363d;border-left:3px solid ${pColor};border-radius:8px;padding:14px">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+            <span style="font-size:16px">${icon}</span>
+            <span style="font-weight:600;color:#e6edf3;font-size:13px;flex:1">${ccEsc(o.title)}</span>
+            ${statusBadge}
+          </div>
+          <div style="display:flex;gap:12px;font-size:11px;color:#8b949e;margin-bottom:8px">
+            <span>${ccEsc(o.agent_name)}</span>
+            <span>${ccEsc(o.agent_role)}</span>
+            <span>${date}</span>
+            <span style="color:${pColor}">${(o.priority || 'normal').toUpperCase()}</span>
+          </div>
+          <details>
+            <summary style="cursor:pointer;color:#58a6ff;font-size:12px;margin-bottom:6px">View output</summary>
+            <pre style="background:#161b22;border:1px solid #30363d;border-radius:6px;padding:12px;font-size:11px;color:#c9d1d9;white-space:pre-wrap;word-break:break-word;max-height:400px;overflow-y:auto;margin-top:6px">${preview}</pre>
+          </details>
+          ${actions}
+        </div>`;
+      }).join('');
+    } catch(e) {
+      container.innerHTML = '<div style="text-align:center;color:#f85149;padding:40px;font-size:13px">Error loading outputs: ' + ccEsc(e.message) + '</div>';
+    }
+  };
+
+  window.ccAlUpdateOutput = async function(id, status) {
+    try {
+      const res = await fetch('/api/agent-outputs/' + id, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      });
+      if (!res.ok) throw new Error(res.status);
+      ccToast('Output marked as ' + status);
+      ccAlLoadSummary();
+      ccAlLoadOutputs();
+    } catch(e) {
+      ccToast('Error updating output: ' + e.message, true);
+    }
+  };
+
+  window.ccAlCopyContent = function(btn) {
+    try {
+      const content = decodeURIComponent(escape(atob(btn.dataset.content)));
+      navigator.clipboard.writeText(content);
+      ccToast('Content copied to clipboard');
+    } catch(e) {
+      ccToast('Copy failed: ' + e.message, true);
+    }
+  };
 })();
 </script>
