@@ -1,0 +1,44 @@
+name: CaseCommand Agent Team
+
+on:
+  schedule:
+    # Every night at 2:00 AM Pacific (10:00 UTC)
+    - cron: '0 10 * * *'
+  workflow_dispatch:
+    # Allow manual trigger from GitHub Actions tab
+    inputs:
+      agent_number:
+        description: 'Run a specific agent (1-10), or leave empty for all'
+        required: false
+        default: ''
+
+jobs:
+  run-agents:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install httpx
+
+      - name: Run Agent Team
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          if [ -n "${{ github.event.inputs.agent_number }}" ]; then
+            python agent_runner.py --agent=${{ github.event.inputs.agent_number }}
+          else
+            python agent_runner.py
+          fi
