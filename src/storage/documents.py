@@ -123,7 +123,7 @@ class DocumentStore:
         doc.save(local_path)
         return filename, local_path
 
-    async def upload_to_storage(self, filename: str, local_path: str, org_id: str) -> str | None:
+    def upload_to_storage(self, filename: str, local_path: str, org_id: str) -> str | None:
         """
         Upload a document to Supabase Storage.
 
@@ -132,7 +132,7 @@ class DocumentStore:
         if not self.db:
             return None
 
-        await self._ensure_bucket()
+        self._ensure_bucket_sync()
 
         storage_path = f"{org_id}/{filename}"
         try:
@@ -144,10 +144,40 @@ class DocumentStore:
                         "content-type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                     },
                 )
+            logger.info("Uploaded %s to storage: %s", filename, storage_path)
             return storage_path
         except Exception as e:
             logger.error("Storage upload failed: %s", e)
             return None
+
+    def _ensure_bucket_sync(self):
+        """Create the storage bucket if it doesn't exist (sync version)."""
+        if self._bucket_verified or not self.db:
+            return
+        try:
+            self.db.storage.get_bucket(BUCKET_NAME)
+            self._bucket_verified = True
+        except Exception:
+            try:
+                self.db.storage.create_bucket(
+                    BUCKET_NAME,
+                    options={"public": False, "file_size_limit": 10485760},
+                )
+                self._bucket_verified = True
+            except Exception as e:
+                logger.warning("Could not create storage bucket: %s", e)
+
+    def build_and_upload(self, title: str, body: str, org_id: str | None = None) -> tuple[str, str, str | None]:
+        """
+        Build a .docx and upload to Supabase Storage in one step.
+
+        Returns (filename, local_path, storage_path_or_None).
+        """
+        filename, local_path = self.build_docx(title, body, org_id)
+        storage_path = None
+        if org_id:
+            storage_path = self.upload_to_storage(filename, local_path, org_id)
+        return filename, local_path, storage_path
 
     def get_signed_url(self, storage_path: str, expires_in: int = 3600) -> str | None:
         """Generate a signed download URL (valid for expires_in seconds)."""
@@ -161,6 +191,20 @@ class DocumentStore:
         except Exception as e:
             logger.error("Signed URL generation failed: %s", e)
             return None
+
+    def download_from_storage(self, storage_path: str, local_dest: str) -> bool:
+        """Download a file from Supabase Storage to a local path."""
+        if not self.db:
+            return False
+        try:
+            data = self.db.storage.from_(BUCKET_NAME).download(storage_path)
+            Path(local_dest).parent.mkdir(parents=True, exist_ok=True)
+            with open(local_dest, "wb") as f:
+                f.write(data)
+            return True
+        except Exception as e:
+            logger.error("Storage download failed for %s: %s", storage_path, e)
+            return False
 
     @staticmethod
     def _add_run_with_text(para, text: str):

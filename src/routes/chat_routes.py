@@ -172,10 +172,11 @@ def _handle_agent_response(
             try:
                 title = tool_call["input"]["title"]
                 body = tool_call["input"]["body"]
-                filename, local_path = doc_store.build_docx(title, body, org_id)
+                filename, local_path, storage_path = doc_store.build_and_upload(title, body, org_id)
                 document = {
                     "filename": filename,
                     "url": f"/api/v1/documents/{filename}",
+                    "storage_path": storage_path,
                     "title": title.replace("_", " "),
                 }
                 if not reply_text:
@@ -187,10 +188,11 @@ def _handle_agent_response(
         try:
             fallback = title_from_message(original_message)
             title, body = extract_title_and_body(reply_text, fallback=fallback)
-            filename, local_path = doc_store.build_docx(title, body, org_id)
+            filename, local_path, storage_path = doc_store.build_and_upload(title, body, org_id)
             document = {
                 "filename": filename,
                 "url": f"/api/v1/documents/{filename}",
+                "storage_path": storage_path,
                 "title": title.replace("_", " "),
             }
             reply_text = body
