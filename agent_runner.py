@@ -248,7 +248,7 @@ async def call_claude(system: str, user_message: str) -> str:
                 },
             )
             if resp.status_code == 429:
-                wait = 2 ** attempt * 10  # 10s, 20s, 40s, 80s, 160s
+                wait = 2 ** attempt * 15  # 15s, 30s, 60s, 120s, 240s
                 print(f"    Rate limited — retrying in {wait}s (attempt {attempt + 1}/5)")
                 await asyncio.sleep(wait)
                 continue
@@ -395,15 +395,14 @@ async def main():
     print(f"    Context size: {len(codebase):,} characters")
     print()
 
-    # Run agents in parallel (with concurrency limit to avoid rate limits)
-    semaphore = asyncio.Semaphore(2)
-
-    async def run_with_limit(agent):
-        async with semaphore:
-            return await run_agent(agent, codebase)
-
+    # Run agents sequentially with delay to avoid rate limits
     print("[*] Running agents...")
-    results = await asyncio.gather(*[run_with_limit(a) for a in agents_to_run])
+    results = []
+    for i, agent in enumerate(agents_to_run):
+        if i > 0:
+            await asyncio.sleep(15)  # 15s pause between agents
+        result = await run_agent(agent, codebase)
+        results.append(result)
 
     # Summary
     print()
