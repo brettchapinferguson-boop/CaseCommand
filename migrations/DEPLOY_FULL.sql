@@ -273,6 +273,25 @@ ALTER TABLE organizations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE org_members ENABLE ROW LEVEL SECURITY;
 ALTER TABLE firm_config ENABLE ROW LEVEL SECURITY;
 ALTER TABLE usage_tracking ENABLE ROW LEVEL SECURITY;
+ALTER TABLE conversation_messages ENABLE ROW LEVEL SECURITY;
+
+-- Conversation messages: org-scoped read/write
+DROP POLICY IF EXISTS "Org members can view conversation_messages" ON conversation_messages;
+CREATE POLICY "Org members can view conversation_messages"
+    ON conversation_messages FOR SELECT
+    USING (org_id IN (SELECT om.org_id FROM org_members om WHERE om.user_id = auth.uid()));
+
+DROP POLICY IF EXISTS "Org members can insert conversation_messages" ON conversation_messages;
+CREATE POLICY "Org members can insert conversation_messages"
+    ON conversation_messages FOR INSERT
+    WITH CHECK (org_id IN (SELECT om.org_id FROM org_members om WHERE om.user_id = auth.uid()));
+
+-- Service role bypass for conversation_messages (backend writes)
+DROP POLICY IF EXISTS "Service role full access to conversation_messages" ON conversation_messages;
+CREATE POLICY "Service role full access to conversation_messages"
+    ON conversation_messages FOR ALL
+    USING (auth.role() = 'service_role')
+    WITH CHECK (auth.role() = 'service_role');
 
 -- Organizations: members can view their own org
 DROP POLICY IF EXISTS "Users can view their organization" ON organizations;

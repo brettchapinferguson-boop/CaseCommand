@@ -30,42 +30,47 @@ async def chat(req: ChatRequest, user: CurrentUser, request: Request):
 
     session_id = req.session_id or str(uuid.uuid4())
 
-    # Load conversation history for this session
-    history = await _load_history(db, session_id, limit=20)
+    try:
+        # Load conversation history for this session
+        history = await _load_history(db, session_id, limit=20, org_id=user.org_id)
 
-    # Load firm config for personalized system prompt
-    firm_config = None
-    if user.org_id:
-        try:
-            result = db.table("firm_config").select("*").eq("org_id", user.org_id).execute()
-            if result.data:
-                firm_config = result.data[0]
-        except Exception:
-            pass
+        # Load firm config for personalized system prompt
+        firm_config = None
+        if user.org_id:
+            try:
+                result = db.table("firm_config").select("*").eq("org_id", user.org_id).execute()
+                if result.data:
+                    firm_config = result.data[0]
+            except Exception:
+                pass
 
-    # Process through agent
-    ctx = {
-        "supabase": db,
-        "org_id": user.org_id,
-        "user_id": user.user_id,
-        "firm_config": firm_config,
-    }
-    response = await process_message(
-        req.message,
-        conversation_history=history,
-        context=ctx,
-    )
-    reply_text, document = _handle_agent_response(response, req.message, doc_store, user.org_id)
+        # Process through agent
+        ctx = {
+            "supabase": db,
+            "org_id": user.org_id,
+            "user_id": user.user_id,
+            "firm_config": firm_config,
+        }
+        response = await process_message(
+            req.message,
+            conversation_history=history,
+            context=ctx,
+        )
+        reply_text, document = _handle_agent_response(response, req.message, doc_store, user.org_id)
 
-    # Persist conversation
-    await _save_message(db, session_id, "user", req.message, user.user_id, user.org_id)
-    await _save_message(db, session_id, "assistant", reply_text, user.user_id, user.org_id)
+        # Persist conversation
+        await _save_message(db, session_id, "user", req.message, user.user_id, user.org_id)
+        await _save_message(db, session_id, "assistant", reply_text, user.user_id, user.org_id)
 
-    # Track usage
-    usage_tracker = request.app.state.usage_tracker
-    if usage_tracker and user.org_id:
-        tokens = response.get("usage", {}).get("input_tokens", 0) + response.get("usage", {}).get("output_tokens", 0)
-        await usage_tracker.record_ai_call(user.org_id, tokens)
+        # Track usage
+        usage_tracker = request.app.state.usage_tracker
+        if usage_tracker and user.org_id:
+            tokens = response.get("usage", {}).get("input_tokens", 0) + response.get("usage", {}).get("output_tokens", 0)
+            await usage_tracker.record_ai_call(user.org_id, tokens)
+
+    except Exception as e:
+        logger.error("Chat processing failed: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Chat processing failed: {e}")
 
     return {
         "response": reply_text,
@@ -131,6 +136,8 @@ async def _load_history(
             .order("created_at", desc=False)
             .limit(limit)
         )
+        if org_id:
+            query = query.eq("org_id", org_id)
         result = query.execute()
         return [
             {"role": msg["role"], "content": msg["content"]}
