@@ -436,10 +436,21 @@ async def _call_claude_for_case_extraction(text: str) -> dict:
         "anthropic-version": "2023-06-01",
         "content-type": "application/json",
     }
-    async with _httpx.AsyncClient(timeout=60.0) as client:
-        resp = await client.post("https://api.anthropic.com/v1/messages", headers=headers, json=payload)
-        resp.raise_for_status()
-        data = resp.json()
+    _fallback = {
+        "case_name": "New Case",
+        "case_type": "Other",
+        "client_name": "TBD",
+        "opposing_party": "TBD",
+        "summary": "",
+    }
+    try:
+        async with _httpx.AsyncClient(timeout=60.0) as client:
+            resp = await client.post("https://api.anthropic.com/v1/messages", headers=headers, json=payload)
+            resp.raise_for_status()
+            data = resp.json()
+    except Exception as e:
+        logger.warning(f"Claude API call failed during case extraction: {e}")
+        return _fallback
 
     raw = ""
     for block in data.get("content", []):
@@ -455,14 +466,7 @@ async def _call_claude_for_case_extraction(text: str) -> dict:
     try:
         return json.loads(raw)
     except json.JSONDecodeError:
-        # Best-effort partial parse
-        return {
-            "case_name": "New Case",
-            "case_type": "Other",
-            "client_name": "TBD",
-            "opposing_party": "TBD",
-            "summary": "",
-        }
+        return _fallback
 
 
 @app.post("/api/analyze-document")
