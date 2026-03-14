@@ -27,7 +27,11 @@ import httpx
 
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
-SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_KEY", "")
+SUPABASE_SERVICE_KEY = (
+    os.environ.get("SUPABASE_SECRET_KEY", "")
+    or os.environ.get("SUPABASE_SERVICE_KEY", "")
+    or os.environ.get("SUPABASE_KEY", "")
+)
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
 
@@ -186,6 +190,37 @@ AGENTS = [
             "2. Why it's high-impact for Brett's practice\n"
             "3. Technical approach (API endpoints, DB schema, UI)\n"
             "4. Estimated complexity (small/medium/large)"
+        ),
+    },
+    {
+        "name": "SystemErrorDetector",
+        "role": "System Reliability Engineer — Auto-Error Detector",
+        "output_type": "code_fix",
+        "priority": "critical",
+        "prompt": (
+            "You are a system reliability engineer for CaseCommand. Your job is to:\n\n"
+            "1. READ the full codebase provided below.\n"
+            "2. IDENTIFY any active bugs, broken flows, or errors that would prevent:\n"
+            "   - Case creation from the web form\n"
+            "   - Casey being able to create/find cases in the database\n"
+            "   - The frontend dashboard showing database cases\n"
+            "   - Document generation or download\n"
+            "   - The agent receiving correct context about active cases\n\n"
+            "3. For EACH issue found, provide:\n"
+            "   a. File name and line number\n"
+            "   b. Exact description of the bug\n"
+            "   c. Root cause analysis\n"
+            "   d. The COMPLETE fixed code (full function or block — not just a diff)\n\n"
+            "4. PRIORITIZE issues that block core functionality (case creation, DB sync, "
+            "   Casey seeing cases) over cosmetic issues.\n\n"
+            "5. Check specifically:\n"
+            "   - Does the frontend load cases from /api/cases on mount? (or is it hardcoded?)\n"
+            "   - Does the POST /api/cases endpoint handle RLS errors gracefully?\n"
+            "   - Does Casey's process_message correctly inject active cases from DB?\n"
+            "   - Is the SUPABASE_SECRET_KEY used correctly (service_role key required)?\n"
+            "   - Are there any async/sync mismatches in the API handlers?\n\n"
+            "Format your response as a numbered list of issues with fixes.\n"
+            "Be thorough — missing issues means production errors go unfixed."
         ),
     },
 ]

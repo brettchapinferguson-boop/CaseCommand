@@ -31,6 +31,7 @@ from src.api_client import CaseCommandAI
 from src.agent import process_message
 from src.channels import telegram as tg_channel
 from src.channels import twilio as tw_channel
+from src.self_healer import start_healer_background
 
 logger = logging.getLogger(__name__)
 
@@ -1129,6 +1130,110 @@ def update_agent_output(output_id: str, update: AgentOutputUpdate, _: None = Dep
     if not result.data:
         raise HTTPException(status_code=404, detail="Agent output not found")
     return result.data[0]
+
+
+# ---------------------------------------------------------------------------
+# Auto-setup / Self-healing — runs on startup and via /api/setup endpoint
+# ---------------------------------------------------------------------------
+
+
+def _run_auto_setup() -> dict:
+    """
+    Auto-healing startup routine.
+    Tests DB connectivity and write access; logs actionable guidance if broken.
+    Returns a status dict.
+    """
+    report = {"success": True, "issues": [], "fixes": []}
+
+    # 1. Test connectivity
+    try:
+        result = supabase.table("cases").select("id").limit(1).execute()
+        report["db_readable"] = True
+        report["cases_count"] = len(result.data or [])
+    except Exception as e:
+        report["db_readable"] = False
+        report["success"] = False
+        report["issues"].append(f"Database not readable: {e}")
+        logger.error(f"[AUTO-SETUP] DB read failed: {e}")
+        return report
+
+    # 2. Test write access
+    try:
+        test = {
+            "case_name": "__startup_test__",
+            "case_type": "Other",
+            "client_name": "TBD",
+            "opposing_party": "TBD",
+            "status": "active",
+        }
+        ins = supabase.table("cases").insert(test).execute()
+        if ins.data:
+            # Clean up
+            supabase.table("cases").delete().eq("case_name", "__startup_test__").execute()
+            report["db_writable"] = True
+            report["fixes"].append("Database write access confirmed — no RLS issues.")
+        else:
+            report["db_writable"] = False
+            report["success"] = False
+            report["issues"].append(
+                "Database INSERT returned empty data. RLS policy is blocking writes. "
+                "ACTION REQUIRED: Run database/migrations/002_fix_rls_backend_access.sql "
+                "in the Supabase SQL Editor. Also confirm SUPABASE_SECRET_KEY is the "
+                "service_role key (starts with 'eyJ' or 'sb_secret_')."
+            )
+            logger.error(
+                "[AUTO-SETUP] DB write blocked by RLS. "
+                "Run database/migrations/002_fix_rls_backend_access.sql in Supabase SQL Editor."
+            )
+    except Exception as e:
+        report["db_writable"] = False
+        report["success"] = False
+        report["issues"].append(f"Database write test failed: {e}")
+        logger.error(f"[AUTO-SETUP] DB write test error: {e}")
+
+    # 3. Test casey_memory table
+    try:
+        supabase.table("casey_memory").select("key").limit(1).execute()
+        report["memory_readable"] = True
+    except Exception as e:
+        report["memory_readable"] = False
+        report["issues"].append(
+            f"casey_memory table not found or not readable: {e}. "
+            "Run database/migrations/001_casey_memory.sql in Supabase SQL Editor."
+        )
+        logger.warning(f"[AUTO-SETUP] casey_memory issue: {e}")
+
+    if report["success"]:
+        logger.info("[AUTO-SETUP] All systems operational. Database read/write confirmed.")
+    else:
+        logger.error(f"[AUTO-SETUP] Issues found: {report['issues']}")
+
+    return report
+
+
+@app.on_event("startup")
+async def startup_event():
+    """Run auto-setup diagnostics and start self-healer on server startup."""
+    import asyncio
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(None, _run_auto_setup)
+    # Start the continuous self-healing background task
+    asyncio.create_task(_healer_task())
+
+
+async def _healer_task():
+    """Background self-healing loop."""
+    from src.self_healer import healer_loop
+    await healer_loop(supabase)
+
+
+@app.get("/api/setup")
+def run_setup(_: None = Depends(verify_token)):
+    """
+    Re-run the auto-setup diagnostic and return full status report.
+    Call this after changing environment variables to verify DB connectivity.
+    """
+    return _run_auto_setup()
 
 
 # ---------------------------------------------------------------------------
