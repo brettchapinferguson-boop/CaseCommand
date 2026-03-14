@@ -264,19 +264,29 @@ async def _execute_tool(name: str, input_data: dict, context: dict) -> dict:
     if name == "create_case":
         if not supabase:
             return {"status": "error", "message": "Database not available."}
-        data = {
-            "case_name": input_data.get("case_name", "New Case"),
-            "case_type": input_data.get("case_type") or "Other",
-            "client_name": input_data.get("client_name") or "TBD",
-            "opposing_party": input_data.get("opposing_party") or "TBD",
-        }
-        result = supabase.table("cases").insert(data).execute()
-        created = result.data[0] if result.data else data
-        return {
-            "status": "success",
-            "case": created,
-            "message": f"Case '{data['case_name']}' created successfully. It is now visible on the dashboard.",
-        }
+        try:
+            data = {
+                "case_name": input_data.get("case_name", "New Case"),
+                "case_type": input_data.get("case_type") or "Other",
+                "client_name": input_data.get("client_name") or "TBD",
+                "opposing_party": input_data.get("opposing_party") or "TBD",
+                "status": "active",
+            }
+            result = supabase.table("cases").insert(data).execute()
+            if not result.data:
+                return {
+                    "status": "error",
+                    "message": "Database insert returned no data. RLS policy may be blocking writes — "
+                               "SUPABASE_SECRET_KEY must be the service_role key.",
+                }
+            created = result.data[0]
+            return {
+                "status": "success",
+                "case": created,
+                "message": f"Case '{data['case_name']}' created successfully. It is now visible on the dashboard.",
+            }
+        except Exception as e:
+            return {"status": "error", "message": f"Database error: {str(e)}"}
 
     if name == "save_memory":
         if not supabase:
@@ -343,20 +353,26 @@ async def process_message(
     supabase = ctx.get("supabase")
     if supabase:
         try:
-            cases_result = supabase.table("cases").select("*").eq("status", "active").execute()
-            cases = cases_result.data or []
+            # Query all cases (active status OR NULL status for backward compat)
+            cases_result = supabase.table("cases").select("*").execute()
+            all_cases = cases_result.data or []
+            # Filter: active cases = status is 'active' or NULL (legacy records)
+            cases = [c for c in all_cases if c.get("status") in ("active", None, "")]
+            if not cases:
+                cases = all_cases  # fallback: show all if none match active filter
             if cases:
                 cases_ctx = "\n".join(
                     f"- {c.get('case_name', 'Unknown')} "
                     f"(Type: {c.get('case_type', '')}, "
                     f"Client: {c.get('client_name', '')}, "
-                    f"Opposing: {c.get('opposing_party', '')})"
+                    f"Opposing: {c.get('opposing_party', '')}, "
+                    f"ID: {c.get('id', '')})"
                     for c in cases
                 )
             else:
-                cases_ctx = "No active cases."
-        except Exception:
-            cases_ctx = "Database unavailable."
+                cases_ctx = "No cases in database yet."
+        except Exception as e:
+            cases_ctx = f"Database unavailable: {e}"
 
         # Load long-term memory
         try:
@@ -366,29 +382,29 @@ async def process_message(
                 mem_ctx = "\n".join(f"- [{m.get('category', 'note')}] {m['key']}: {m['value']}" for m in memories)
             else:
                 mem_ctx = "No long-term memories yet."
-        except Exception:
-            mem_ctx = "Memory unavailable."
+        except Exception as e:
+            mem_ctx = f"Memory unavailable: {e}"
     else:
         cases_ctx = "Database not connected."
         mem_ctx = "Memory unavailable."
 
-    # Prepend context as system-injected messages if this is the first user message
-    if len(messages) == 1:
-        context_content = (
-            f"[System: Active cases]\n{cases_ctx}\n\n"
-            f"[System: Long-term memory]\n{mem_ctx}"
-        )
-        messages.insert(0, {
-            "role": "user",
-            "content": context_content,
-        })
-        messages.insert(1, {
-            "role": "assistant",
-            "content": (
-                "Understood. I have the current case roster and my memory loaded. "
-                "I will maintain context throughout our conversation. How can I help?"
-            ),
-        })
+    # Always inject fresh context — prepend to the current user message so Casey
+    # has up-to-date case roster even in ongoing conversations with history loaded.
+    context_content = (
+        f"[System: Active cases — current as of this message]\n{cases_ctx}\n\n"
+        f"[System: Long-term memory]\n{mem_ctx}"
+    )
+    messages.insert(len(messages) - 1, {
+        "role": "user",
+        "content": context_content,
+    })
+    messages.insert(len(messages) - 1, {
+        "role": "assistant",
+        "content": (
+            "Understood. I have the current case roster and my memory loaded. "
+            "I will maintain context throughout our conversation. How can I help?"
+        ),
+    })
 
     # --- Agent loop: call Claude, handle tool use, repeat ---
     max_iterations = 5

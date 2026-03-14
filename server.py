@@ -270,28 +270,85 @@ async def ai_generate(req: AIRequest, _: None = Depends(verify_token)):
 
 @app.get("/api/cases")
 def list_cases(_: None = Depends(verify_token)):
-    result = supabase.table("cases").select("*").execute()
-    return result.data
+    try:
+        result = supabase.table("cases").select("*").order("created_at", desc=True).execute()
+        return result.data or []
+    except Exception as e:
+        logger.error(f"list_cases DB error: {e}")
+        raise HTTPException(status_code=500, detail=f"Database error listing cases: {str(e)}")
 
 
 @app.get("/api/cases/{case_id}")
 def get_case(case_id: str, _: None = Depends(verify_token)):
-    result = supabase.table("cases").select("*").eq("id", case_id).execute()
-    if not result.data:
-        raise HTTPException(status_code=404, detail="Case not found")
-    return result.data[0]
+    try:
+        result = supabase.table("cases").select("*").eq("id", case_id).execute()
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Case not found")
+        return result.data[0]
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"get_case DB error: {e}")
+        raise HTTPException(status_code=500, detail=f"Database error fetching case: {str(e)}")
 
 
 @app.post("/api/cases", status_code=201)
 def create_case(case: CaseCreate, _: None = Depends(verify_token)):
-    data = {
-        "case_name": case.name,
-        "case_type": case.type or "Other",
-        "client_name": case.client or "TBD",
-        "opposing_party": case.opposing or "TBD",
-    }
-    result = supabase.table("cases").insert(data).execute()
-    return result.data[0]
+    try:
+        data = {
+            "case_name": case.name,
+            "case_type": case.type or "Other",
+            "client_name": case.client or "TBD",
+            "opposing_party": case.opposing or "TBD",
+            "status": "active",
+        }
+        result = supabase.table("cases").insert(data).execute()
+        if not result.data:
+            logger.error("Case insert returned empty data — likely an RLS policy violation. "
+                         "Ensure SUPABASE_SECRET_KEY is set to the service_role (sb_secret_*) key, "
+                         "not the anon/publishable key.")
+            raise HTTPException(
+                status_code=500,
+                detail="Case could not be saved. Database insert returned no data. "
+                       "Check that SUPABASE_SECRET_KEY is the service_role key and that "
+                       "the migration 002_fix_rls.sql has been run in Supabase."
+            )
+        return result.data[0]
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"create_case DB error: {e}")
+        raise HTTPException(status_code=500, detail=f"Database error creating case: {str(e)}")
+
+
+@app.get("/api/debug")
+def debug_db(_: None = Depends(verify_token)):
+    """Diagnostic endpoint — checks Supabase connectivity and RLS access."""
+    report = {"supabase_url": SUPABASE_URL[:40] + "..." if SUPABASE_URL else "NOT SET",
+              "key_set": bool(SUPABASE_SECRET_KEY),
+              "key_prefix": SUPABASE_SECRET_KEY[:12] + "..." if SUPABASE_SECRET_KEY else "NOT SET"}
+    try:
+        result = supabase.table("cases").select("id,case_name,status").limit(5).execute()
+        report["cases_readable"] = True
+        report["cases_count"] = len(result.data or [])
+        report["sample_cases"] = [c.get("case_name") for c in (result.data or [])]
+    except Exception as e:
+        report["cases_readable"] = False
+        report["cases_error"] = str(e)
+    try:
+        test_data = {"case_name": "__debug_test__", "case_type": "Other",
+                     "client_name": "TBD", "opposing_party": "TBD", "status": "active"}
+        ins = supabase.table("cases").insert(test_data).execute()
+        if ins.data:
+            supabase.table("cases").delete().eq("case_name", "__debug_test__").execute()
+            report["cases_writable"] = True
+        else:
+            report["cases_writable"] = False
+            report["write_error"] = "Insert returned empty data — RLS policy blocking write"
+    except Exception as e:
+        report["cases_writable"] = False
+        report["write_error"] = str(e)
+    return report
 
 
 @app.post("/api/chat")
@@ -303,7 +360,12 @@ async def chat(req: ChatRequest, _: None = Depends(verify_token)):
     # Load conversation history from database for this session
     history = _load_conversation_history(session_id)
 
-    response = await process_message(req.message, conversation_history=history, context=ctx)
+    try:
+        response = await process_message(req.message, conversation_history=history, context=ctx)
+    except Exception as e:
+        logger.error(f"process_message failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Agent error: {str(e)}")
+
     reply_text, document = _handle_agent_response(response, req.message)
 
     # Persist this exchange to the database
