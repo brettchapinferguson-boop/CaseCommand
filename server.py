@@ -10,12 +10,14 @@ import re
 import json
 import uuid
 import logging
+import io
 from pathlib import Path
+from datetime import datetime, timezone
 from dotenv import load_dotenv
 
 load_dotenv()
 
-from fastapi import FastAPI, HTTPException, Depends, Security, Request, BackgroundTasks
+from fastapi import FastAPI, HTTPException, Depends, Security, Request, BackgroundTasks, UploadFile, File
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
@@ -72,9 +74,9 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Security(security))
 
 class CaseCreate(BaseModel):
     name: str
-    type: str
-    client: str
-    opposing: str
+    type: str = "Other"
+    client: str = "TBD"
+    opposing: str = "TBD"
 
 
 class ChatRequest(BaseModel):
@@ -284,9 +286,9 @@ def get_case(case_id: str, _: None = Depends(verify_token)):
 def create_case(case: CaseCreate, _: None = Depends(verify_token)):
     data = {
         "case_name": case.name,
-        "case_type": case.type,
-        "client_name": case.client,
-        "opposing_party": case.opposing,
+        "case_type": case.type or "Other",
+        "client_name": case.client or "TBD",
+        "opposing_party": case.opposing or "TBD",
     }
     result = supabase.table("cases").insert(data).execute()
     return result.data[0]
@@ -294,17 +296,200 @@ def create_case(case: CaseCreate, _: None = Depends(verify_token)):
 
 @app.post("/api/chat")
 async def chat(req: ChatRequest, _: None = Depends(verify_token)):
-    """Web dashboard chat — routes through the unified Casey agent."""
-    ctx = {"supabase": supabase}
-    response = await process_message(req.message, context=ctx)
+    """Web dashboard chat — routes through the unified Casey agent with persistent memory."""
+    session_id = req.session_id or str(uuid.uuid4())
+    ctx = {"supabase": supabase, "session_id": session_id}
+
+    # Load conversation history from database for this session
+    history = _load_conversation_history(session_id)
+
+    response = await process_message(req.message, conversation_history=history, context=ctx)
     reply_text, document = _handle_agent_response(response, req.message)
+
+    # Persist this exchange to the database
+    _save_conversation_messages(session_id, "web", req.message, reply_text, response)
 
     return {
         "response": reply_text,
         "model": response["model"],
         "document": document,
-        "session_id": req.session_id,
+        "session_id": session_id,
     }
+
+
+def _load_conversation_history(session_id: str, limit: int = 20) -> list:
+    """Load recent conversation messages from DB for a session."""
+    try:
+        result = (
+            supabase.table("conversation_messages")
+            .select("role,content")
+            .eq("session_id", session_id)
+            .order("created_at", desc=False)
+            .limit(limit)
+            .execute()
+        )
+        return [{"role": r["role"], "content": r["content"]} for r in (result.data or [])]
+    except Exception as e:
+        logger.warning(f"Could not load conversation history: {e}")
+        return []
+
+
+def _save_conversation_messages(
+    session_id: str, channel: str, user_msg: str, assistant_reply: str, response: dict
+):
+    """Persist a user+assistant message pair to the database."""
+    try:
+        now = datetime.now(timezone.utc).isoformat()
+        rows = [
+            {
+                "session_id": session_id,
+                "channel": channel,
+                "role": "user",
+                "content": user_msg,
+                "metadata": {},
+                "created_at": now,
+            },
+            {
+                "session_id": session_id,
+                "channel": channel,
+                "role": "assistant",
+                "content": assistant_reply,
+                "metadata": {
+                    "model": response.get("model", ""),
+                    "tool_calls": [tc.get("name") for tc in response.get("tool_calls", [])],
+                },
+                "created_at": now,
+            },
+        ]
+        supabase.table("conversation_messages").insert(rows).execute()
+    except Exception as e:
+        logger.warning(f"Could not save conversation messages: {e}")
+
+
+# ---------------------------------------------------------------------------
+# Document analysis for new case creation
+# ---------------------------------------------------------------------------
+
+
+def _extract_text_from_upload(content: bytes, filename: str) -> str:
+    """Extract plain text from an uploaded file (txt, docx, pdf)."""
+    name_lower = filename.lower()
+
+    if name_lower.endswith(".txt"):
+        try:
+            return content.decode("utf-8", errors="replace")
+        except Exception:
+            return content.decode("latin-1", errors="replace")
+
+    if name_lower.endswith(".docx") or name_lower.endswith(".doc"):
+        try:
+            from docx import Document as DocxDoc
+            doc = DocxDoc(io.BytesIO(content))
+            return "\n".join(p.text for p in doc.paragraphs if p.text.strip())
+        except Exception as e:
+            logger.warning(f"Could not parse docx: {e}")
+            return ""
+
+    if name_lower.endswith(".pdf"):
+        try:
+            from pypdf import PdfReader
+            reader = PdfReader(io.BytesIO(content))
+            pages = []
+            for page in reader.pages[:10]:  # First 10 pages
+                pages.append(page.extract_text() or "")
+            return "\n".join(pages)
+        except Exception as e:
+            logger.warning(f"Could not parse pdf: {e}")
+            return ""
+
+    # Fallback: try as UTF-8 text
+    try:
+        return content.decode("utf-8", errors="replace")
+    except Exception:
+        return ""
+
+
+async def _call_claude_for_case_extraction(text: str) -> dict:
+    """Ask Claude to extract case metadata from document text."""
+    import httpx as _httpx
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    model = os.environ.get("CLAUDE_MODEL", "claude-sonnet-4-6")
+
+    system = (
+        "You are a legal document analyst. Given document text, extract case information. "
+        "Respond ONLY with a JSON object (no markdown, no explanation) with these fields:\n"
+        '{"case_name": "Plaintiff v. Defendant", "case_type": "PI|Employment|Contract|Criminal|Family|Real Estate|Other", '
+        '"client_name": "full name or TBD", "opposing_party": "full name or TBD", '
+        '"summary": "1-2 sentence case summary or empty string"}\n'
+        "If you cannot determine a value, use TBD. For case_name, construct it as 'Client v. Opposing Party' if possible."
+    )
+    prompt = f"Extract case information from this document:\n\n{text[:4000]}"
+
+    payload = {
+        "model": model,
+        "max_tokens": 512,
+        "system": system,
+        "messages": [{"role": "user", "content": prompt}],
+    }
+    headers = {
+        "x-api-key": api_key,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+    }
+    async with _httpx.AsyncClient(timeout=60.0) as client:
+        resp = await client.post("https://api.anthropic.com/v1/messages", headers=headers, json=payload)
+        resp.raise_for_status()
+        data = resp.json()
+
+    raw = ""
+    for block in data.get("content", []):
+        if block.get("type") == "text":
+            raw += block["text"]
+
+    # Strip markdown code fences if present
+    raw = raw.strip()
+    if raw.startswith("```"):
+        raw = re.sub(r"^```[a-z]*\n?", "", raw)
+        raw = re.sub(r"\n?```$", "", raw)
+
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        # Best-effort partial parse
+        return {
+            "case_name": "New Case",
+            "case_type": "Other",
+            "client_name": "TBD",
+            "opposing_party": "TBD",
+            "summary": "",
+        }
+
+
+@app.post("/api/analyze-document")
+async def analyze_document(file: UploadFile = File(...), _: None = Depends(verify_token)):
+    """
+    Upload a case document (PDF, DOCX, TXT). Returns extracted case metadata
+    for human-in-the-loop review before case creation.
+    """
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Empty file")
+
+    text = _extract_text_from_upload(content, file.filename or "")
+    if not text.strip():
+        # Return a graceful fallback so the UI still shows the confirmation form
+        return {
+            "case_name": "New Case",
+            "case_type": "Other",
+            "client_name": "TBD",
+            "opposing_party": "TBD",
+            "summary": "Could not extract text from document. Please fill in the details manually.",
+            "filename": file.filename,
+        }
+
+    extracted = await _call_claude_for_case_extraction(text)
+    extracted["filename"] = file.filename
+    return extracted
 
 
 @app.get("/api/documents/{filename}", include_in_schema=False)
@@ -632,9 +817,12 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
 async def _process_telegram_message(chat_id: int, text: str, reply_to: int):
     """Background task: run agent and reply on Telegram."""
     try:
-        ctx = {"supabase": supabase}
-        response = await process_message(text, context=ctx)
+        session_id = f"telegram_{chat_id}"
+        ctx = {"supabase": supabase, "session_id": session_id}
+        history = _load_conversation_history(session_id, limit=20)
+        response = await process_message(text, conversation_history=history, context=ctx)
         reply_text, document = _handle_agent_response(response, text)
+        _save_conversation_messages(session_id, "telegram", text, reply_text, response)
 
         # Send text reply
         await tg_channel.send_message(chat_id, reply_text, reply_to=reply_to)
@@ -711,9 +899,12 @@ async def twilio_webhook(request: Request, background_tasks: BackgroundTasks):
 async def _process_twilio_message(from_number: str, text: str, channel: str):
     """Background task: run agent and reply via Twilio SMS/WhatsApp."""
     try:
-        ctx = {"supabase": supabase}
-        response = await process_message(text, context=ctx)
+        session_id = f"twilio_{from_number.replace('+', '').replace(':', '_')}"
+        ctx = {"supabase": supabase, "session_id": session_id}
+        history = _load_conversation_history(session_id, limit=20)
+        response = await process_message(text, conversation_history=history, context=ctx)
         reply_text, document = _handle_agent_response(response, text)
+        _save_conversation_messages(session_id, channel, text, reply_text, response)
 
         # For messaging channels, include download URL as full URL if document generated
         if document:

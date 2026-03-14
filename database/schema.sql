@@ -119,6 +119,15 @@ CREATE TABLE IF NOT EXISTS conversation_messages (
 CREATE INDEX IF NOT EXISTS idx_conversation_session
     ON conversation_messages(session_id, created_at);
 
+-- Casey long-term memory: persistent facts, preferences, learned patterns
+CREATE TABLE IF NOT EXISTS casey_memory (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    category TEXT DEFAULT 'note',   -- preference, pattern, fact, skill, note
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- ============================================================
 -- TRIGGERS
 -- ============================================================
