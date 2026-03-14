@@ -94,29 +94,73 @@ TOOLS = [
         "name": "create_case",
         "description": (
             "Create a new case in the database. Use when the user wants to "
-            "open or create a new case file."
+            "open or create a new case file. Only case_name is required — "
+            "all other fields default to 'TBD' and can be filled in later. "
+            "Never refuse to create a case due to missing information."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
                 "case_name": {
                     "type": "string",
-                    "description": "Full case name, e.g., Rodriguez v. Smith Trucking",
+                    "description": "Full case name, e.g., Rodriguez v. Smith Trucking. Required.",
                 },
                 "case_type": {
                     "type": "string",
-                    "description": "Case type: PI, Employment, Contract, Criminal, Family, Real Estate, Other",
+                    "description": "Case type: PI, Employment, Contract, Criminal, Family, Real Estate, Other. Default: Other",
                 },
                 "client_name": {
                     "type": "string",
-                    "description": "Client's full name",
+                    "description": "Client's full name. Default: TBD",
                 },
                 "opposing_party": {
                     "type": "string",
-                    "description": "Opposing party name",
+                    "description": "Opposing party name. Default: TBD",
                 },
             },
-            "required": ["case_name", "case_type", "client_name", "opposing_party"],
+            "required": ["case_name"],
+        },
+    },
+    {
+        "name": "save_memory",
+        "description": (
+            "Save an important fact, preference, or learned pattern about the attorney "
+            "or the firm to long-term memory. Use this to remember attorney preferences, "
+            "common case patterns, style preferences, or strategic notes across sessions."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "key": {
+                    "type": "string",
+                    "description": "Short identifier for this memory (e.g., 'attorney_style', 'default_demand_amount')",
+                },
+                "value": {
+                    "type": "string",
+                    "description": "The content to remember",
+                },
+                "category": {
+                    "type": "string",
+                    "description": "Category: preference, pattern, fact, skill, or note",
+                },
+            },
+            "required": ["key", "value"],
+        },
+    },
+    {
+        "name": "recall_memory",
+        "description": (
+            "Retrieve saved long-term memories about the attorney, firm, or case patterns. "
+            "Use this at the start of complex tasks to recall relevant preferences and history."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "category": {
+                    "type": "string",
+                    "description": "Optional: filter by category (preference, pattern, fact, skill, note)",
+                },
+            },
         },
     },
 ]
@@ -221,13 +265,46 @@ async def _execute_tool(name: str, input_data: dict, context: dict) -> dict:
         if not supabase:
             return {"status": "error", "message": "Database not available."}
         data = {
-            "case_name": input_data["case_name"],
-            "case_type": input_data["case_type"],
-            "client_name": input_data["client_name"],
-            "opposing_party": input_data["opposing_party"],
+            "case_name": input_data.get("case_name", "New Case"),
+            "case_type": input_data.get("case_type") or "Other",
+            "client_name": input_data.get("client_name") or "TBD",
+            "opposing_party": input_data.get("opposing_party") or "TBD",
         }
         result = supabase.table("cases").insert(data).execute()
-        return {"status": "success", "case": result.data[0] if result.data else data}
+        created = result.data[0] if result.data else data
+        return {
+            "status": "success",
+            "case": created,
+            "message": f"Case '{data['case_name']}' created successfully. It is now visible on the dashboard.",
+        }
+
+    if name == "save_memory":
+        if not supabase:
+            return {"status": "error", "message": "Database not available."}
+        try:
+            row = {
+                "key": input_data.get("key", ""),
+                "value": input_data.get("value", ""),
+                "category": input_data.get("category", "note"),
+                "updated_at": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
+            }
+            supabase.table("casey_memory").upsert(row, on_conflict="key").execute()
+            return {"status": "success", "message": f"Memory '{row['key']}' saved."}
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+
+    if name == "recall_memory":
+        if not supabase:
+            return {"status": "error", "message": "Database not available."}
+        try:
+            query = supabase.table("casey_memory").select("*").order("updated_at", desc=True)
+            category = input_data.get("category")
+            if category:
+                query = query.eq("category", category)
+            result = query.limit(50).execute()
+            return {"status": "success", "memories": result.data or []}
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
 
     return {"status": "error", "message": f"Unknown tool: {name}"}
 
@@ -262,7 +339,7 @@ async def process_message(
     messages = list(conversation_history or [])
     messages.append({"role": "user", "content": user_message})
 
-    # Inject active cases context into the conversation
+    # Inject active cases + long-term memory context into the conversation
     supabase = ctx.get("supabase")
     if supabase:
         try:
@@ -280,19 +357,37 @@ async def process_message(
                 cases_ctx = "No active cases."
         except Exception:
             cases_ctx = "Database unavailable."
+
+        # Load long-term memory
+        try:
+            mem_result = supabase.table("casey_memory").select("key,value,category").order("updated_at", desc=True).limit(30).execute()
+            memories = mem_result.data or []
+            if memories:
+                mem_ctx = "\n".join(f"- [{m.get('category', 'note')}] {m['key']}: {m['value']}" for m in memories)
+            else:
+                mem_ctx = "No long-term memories yet."
+        except Exception:
+            mem_ctx = "Memory unavailable."
     else:
         cases_ctx = "Database not connected."
+        mem_ctx = "Memory unavailable."
 
-    # Prepend cases context as a system-injected user message if this is the
-    # first message in the conversation
+    # Prepend context as system-injected messages if this is the first user message
     if len(messages) == 1:
+        context_content = (
+            f"[System: Active cases]\n{cases_ctx}\n\n"
+            f"[System: Long-term memory]\n{mem_ctx}"
+        )
         messages.insert(0, {
             "role": "user",
-            "content": f"[System: Active cases]\n{cases_ctx}",
+            "content": context_content,
         })
         messages.insert(1, {
             "role": "assistant",
-            "content": "Understood. I have the current case roster. How can I help?",
+            "content": (
+                "Understood. I have the current case roster and my memory loaded. "
+                "I will maintain context throughout our conversation. How can I help?"
+            ),
         })
 
     # --- Agent loop: call Claude, handle tool use, repeat ---

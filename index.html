@@ -537,11 +537,11 @@ ${e.response}`).join("\n---\n")}`,a=await t2(t,r);if(u(!1),a.success){p(a.text);
   </div>
 </div>
 
-<!-- New Case Upload Modal -->
+<!-- New Case Upload Modal — Step 1: Upload -->
 <div id="cc-newcase-overlay" class="cc-modal-overlay" style="display:none">
   <div class="cc-modal">
     <h3>➕ New Case — Upload Document</h3>
-    <p>Upload a complaint, intake form, or case summary. The AI will extract the details and create the case file automatically.</p>
+    <p>Upload a complaint, intake form, or case summary. The AI will extract the details and create the case file automatically.<br><span style="color:#8b949e;font-size:12px">You can also skip upload and enter details manually.</span></p>
     <div class="cc-drop-zone" id="cc-drop-zone" onclick="document.getElementById('cc-file-input').click()" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="ccHandleDrop(event)">
       <input type="file" id="cc-file-input" accept=".pdf,.doc,.docx,.txt" onchange="ccFileSelected(event)">
       <div class="cc-drop-icon">📂</div>
@@ -550,7 +550,52 @@ ${e.response}`).join("\n---\n")}`,a=await t2(t,r);if(u(!1),a.success){p(a.text);
     </div>
     <div class="cc-modal-actions">
       <button class="cc-modal-cancel" onclick="ccCloseNewCase()">Cancel</button>
-      <button class="cc-modal-submit" id="cc-newcase-submit" onclick="ccSubmitNewCase()" disabled>Create Case with AI</button>
+      <button class="cc-modal-cancel" onclick="ccOpenNewCaseManual()" style="color:#2f81f7;border-color:#2f81f7">Enter Manually</button>
+      <button class="cc-modal-submit" id="cc-newcase-submit" onclick="ccSubmitNewCase()" disabled>Analyze with AI →</button>
+    </div>
+  </div>
+</div>
+
+<!-- New Case Confirm Modal — Step 2: Review & Confirm -->
+<div id="cc-newcase-confirm-overlay" class="cc-modal-overlay" style="display:none">
+  <div class="cc-modal" style="max-width:520px">
+    <h3>✅ Confirm New Case Details</h3>
+    <p style="color:#8b949e;font-size:13px">Review and edit the AI-extracted information before creating the case. All fields except Case Name are optional.</p>
+    <div style="display:flex;flex-direction:column;gap:12px;margin-top:16px">
+      <div>
+        <label style="font-size:12px;color:#8b949e;display:block;margin-bottom:4px">Case Name <span style="color:#f85149">*</span></label>
+        <input id="cc-confirm-name" type="text" placeholder="e.g. Smith v. Jones" style="width:100%;background:#0d1117;border:1px solid #30363d;border-radius:6px;color:#e6edf3;padding:8px 10px;font-size:14px;outline:none">
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div>
+          <label style="font-size:12px;color:#8b949e;display:block;margin-bottom:4px">Client Name</label>
+          <input id="cc-confirm-client" type="text" placeholder="TBD" style="width:100%;background:#0d1117;border:1px solid #30363d;border-radius:6px;color:#e6edf3;padding:8px 10px;font-size:14px;outline:none">
+        </div>
+        <div>
+          <label style="font-size:12px;color:#8b949e;display:block;margin-bottom:4px">Opposing Party</label>
+          <input id="cc-confirm-opposing" type="text" placeholder="TBD" style="width:100%;background:#0d1117;border:1px solid #30363d;border-radius:6px;color:#e6edf3;padding:8px 10px;font-size:14px;outline:none">
+        </div>
+      </div>
+      <div>
+        <label style="font-size:12px;color:#8b949e;display:block;margin-bottom:4px">Case Type</label>
+        <select id="cc-confirm-type" style="width:100%;background:#0d1117;border:1px solid #30363d;border-radius:6px;color:#e6edf3;padding:8px 10px;font-size:14px;outline:none">
+          <option value="PI">Personal Injury (PI)</option>
+          <option value="Employment">Employment</option>
+          <option value="Contract">Contract</option>
+          <option value="Criminal">Criminal</option>
+          <option value="Family">Family</option>
+          <option value="Real Estate">Real Estate</option>
+          <option value="Other" selected>Other</option>
+        </select>
+      </div>
+      <div id="cc-confirm-summary-row" style="display:none">
+        <label style="font-size:12px;color:#8b949e;display:block;margin-bottom:4px">AI Summary</label>
+        <p id="cc-confirm-summary" style="font-size:12px;color:#8b949e;background:#161b22;border:1px solid #30363d;border-radius:6px;padding:8px 10px;margin:0"></p>
+      </div>
+    </div>
+    <div class="cc-modal-actions" style="margin-top:20px">
+      <button class="cc-modal-cancel" onclick="ccCloseNewCaseConfirm()">← Back</button>
+      <button class="cc-modal-submit" id="cc-confirm-submit" onclick="ccConfirmCreateCase()">Create Case</button>
     </div>
   </div>
 </div>
@@ -613,13 +658,54 @@ ${e.response}`).join("\n---\n")}`,a=await t2(t,r);if(u(!1),a.success){p(a.text);
 
 <script>
 (function() {
+  // ── Persistent Session ID for Casey memory ──────────────────────────────
+  // Generate a stable session ID that persists across page loads.
+  // This allows Casey to load conversation history and remember context.
+  const CC_SESSION_KEY = 'cc_casey_session_id';
+  let _ccSessionId = localStorage.getItem(CC_SESSION_KEY);
+  if (!_ccSessionId) {
+    _ccSessionId = 'web_' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+    localStorage.setItem(CC_SESSION_KEY, _ccSessionId);
+  }
+  window.ccSessionId = _ccSessionId;
+
+  // Intercept /api/chat calls to inject persistent session_id
+  const _origFetch = window.fetch;
+  window.fetch = function(url, options) {
+    if (typeof url === 'string' && url.includes('/api/chat') && options && options.method === 'POST') {
+      try {
+        const body = JSON.parse(options.body);
+        if (!body.session_id) {
+          body.session_id = _ccSessionId;
+          options = { ...options, body: JSON.stringify(body) };
+        }
+        // Update session_id if server returns a new one
+      } catch(e) {}
+    }
+    return _origFetch.call(this, url, options).then(res => {
+      // If server returns a session_id, persist it
+      if (typeof url === 'string' && url.includes('/api/chat')) {
+        const clone = res.clone();
+        clone.json().then(data => {
+          if (data && data.session_id && data.session_id !== _ccSessionId) {
+            _ccSessionId = data.session_id;
+            window.ccSessionId = _ccSessionId;
+            localStorage.setItem(CC_SESSION_KEY, _ccSessionId);
+          }
+        }).catch(() => {});
+      }
+      return res;
+    });
+  };
+
   // ── Panel controls ──────────────────────────────────────────────────────
   window.ccOpenInt     = () => { document.getElementById('cc-int-overlay').style.display = 'flex'; ccCheckChannelStatus(); };
   window.ccCloseInt    = () => document.getElementById('cc-int-overlay').style.display = 'none';
   window.ccOpenOutline = () => document.getElementById('cc-outline-overlay').style.display = 'flex';
   window.ccCloseOutline= () => document.getElementById('cc-outline-overlay').style.display = 'none';
   window.ccOpenNewCase = () => document.getElementById('cc-newcase-overlay').style.display = 'flex';
-  window.ccCloseNewCase= () => { document.getElementById('cc-newcase-overlay').style.display = 'none'; document.getElementById('cc-file-name').textContent = ''; document.getElementById('cc-newcase-submit').disabled = true; };
+  window.ccCloseNewCase= () => { document.getElementById('cc-newcase-overlay').style.display = 'none'; document.getElementById('cc-file-name').textContent = ''; document.getElementById('cc-newcase-submit').disabled = true; ccSelectedFile = null; };
+  window.ccCloseNewCaseConfirm = () => { document.getElementById('cc-newcase-confirm-overlay').style.display = 'none'; document.getElementById('cc-newcase-overlay').style.display = 'flex'; };
   window.ccOpenAgentLab = () => { document.getElementById('cc-agentlab-overlay').style.display = 'flex'; ccAlLoadSummary(); ccAlLoadOutputs(); };
   window.ccCloseAgentLab = () => document.getElementById('cc-agentlab-overlay').style.display = 'none';
 
@@ -880,29 +966,112 @@ ${e.response}`).join("\n---\n")}`,a=await t2(t,r);if(u(!1),a.success){p(a.text);
       document.getElementById('cc-newcase-submit').disabled = false;
     }
   };
+
+  // Step 1: Analyze document → populate confirmation form
   window.ccSubmitNewCase = async function() {
     if (!ccSelectedFile) return;
     const btn = document.getElementById('cc-newcase-submit');
     btn.disabled = true;
-    btn.textContent = '⏳ Processing…';
+    btn.textContent = '⏳ Analyzing…';
     try {
-      const text = await ccSelectedFile.text();
-      const preview = text.slice(0, 3000);
-      const res = await fetch('/api/chat', {
+      const formData = new FormData();
+      formData.append('file', ccSelectedFile);
+      const res = await fetch('/api/analyze-document', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: 'Extract the case details from this document and create a new case. Return the case name, case type (PI/Contract/Employment/Criminal/Family/Real Estate/Other), client name, and opposing party. Document text:\n\n' + preview }),
+        body: formData,
       });
-      if (!res.ok) throw new Error(res.status);
+      if (!res.ok) throw new Error('Server error ' + res.status);
       const data = await res.json();
-      ccCloseNewCase();
-      ccToast('Case document processed — review the AI response in CaseCommander chat');
+      // Populate confirmation form
+      document.getElementById('cc-confirm-name').value = data.case_name || '';
+      document.getElementById('cc-confirm-client').value = (data.client_name && data.client_name !== 'TBD') ? data.client_name : '';
+      document.getElementById('cc-confirm-opposing').value = (data.opposing_party && data.opposing_party !== 'TBD') ? data.opposing_party : '';
+      // Set case type dropdown
+      const typeSelect = document.getElementById('cc-confirm-type');
+      const typeVal = data.case_type || 'Other';
+      for (let i = 0; i < typeSelect.options.length; i++) {
+        if (typeSelect.options[i].value === typeVal) { typeSelect.selectedIndex = i; break; }
+      }
+      // Show summary if available
+      const summaryRow = document.getElementById('cc-confirm-summary-row');
+      const summaryEl = document.getElementById('cc-confirm-summary');
+      if (data.summary && data.summary.trim()) {
+        summaryEl.textContent = data.summary;
+        summaryRow.style.display = 'block';
+      } else {
+        summaryRow.style.display = 'none';
+      }
+      // Switch to step 2
+      document.getElementById('cc-newcase-overlay').style.display = 'none';
+      document.getElementById('cc-newcase-confirm-overlay').style.display = 'flex';
     } catch(e) {
-      ccToast('Error processing document: ' + e.message, true);
+      ccToast('Error analyzing document: ' + e.message + '. You can enter details manually.', true);
+      // Open manual entry anyway
+      ccOpenNewCaseManual();
     } finally {
       btn.disabled = false;
-      btn.textContent = 'Create Case with AI';
+      btn.textContent = 'Analyze with AI →';
     }
+  };
+
+  // Open confirm form pre-filled for manual entry (no file required)
+  window.ccOpenNewCaseManual = function() {
+    document.getElementById('cc-confirm-name').value = '';
+    document.getElementById('cc-confirm-client').value = '';
+    document.getElementById('cc-confirm-opposing').value = '';
+    document.getElementById('cc-confirm-type').selectedIndex = 6; // Other
+    document.getElementById('cc-confirm-summary-row').style.display = 'none';
+    document.getElementById('cc-newcase-overlay').style.display = 'none';
+    document.getElementById('cc-newcase-confirm-overlay').style.display = 'flex';
+    document.getElementById('cc-confirm-name').focus();
+  };
+
+  // Step 2: Create case in database
+  window.ccConfirmCreateCase = async function() {
+    const name = document.getElementById('cc-confirm-name').value.trim();
+    if (!name) { ccToast('Case name is required', true); document.getElementById('cc-confirm-name').focus(); return; }
+    const btn = document.getElementById('cc-confirm-submit');
+    btn.disabled = true;
+    btn.textContent = '⏳ Creating…';
+    try {
+      const payload = {
+        name,
+        type: document.getElementById('cc-confirm-type').value || 'Other',
+        client: document.getElementById('cc-confirm-client').value.trim() || 'TBD',
+        opposing: document.getElementById('cc-confirm-opposing').value.trim() || 'TBD',
+      };
+      const res = await fetch('/api/cases', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) { const err = await res.json().catch(()=>{}); throw new Error((err&&err.detail) || 'Server error ' + res.status); }
+      const newCase = await res.json();
+      document.getElementById('cc-newcase-confirm-overlay').style.display = 'none';
+      ccSelectedFile = null;
+      ccToast('✅ Case "' + name + '" created and added to dashboard!');
+      // Trigger a UI refresh so the new case appears
+      ccRefreshCaseList(newCase);
+    } catch(e) {
+      ccToast('Error creating case: ' + e.message, true);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Create Case';
+    }
+  };
+
+  // Refresh case list / notify UI that a new case was added
+  window.ccRefreshCaseList = function(newCase) {
+    // Fire a custom event that the main app can listen to
+    window.dispatchEvent(new CustomEvent('cc:caseCreated', { detail: newCase }));
+    // Also try triggering React state refresh via data attributes or known selectors
+    setTimeout(() => {
+      // Look for a "New Case" or refresh button in the main app and click it
+      const refreshBtns = document.querySelectorAll('[data-refresh-cases],[aria-label*="refresh"],[data-action="refresh"]');
+      refreshBtns.forEach(btn => { try { btn.click(); } catch(e) {} });
+      // If there's a route/page reload mechanism, try that
+      if (typeof window.__ccRefreshDashboard === 'function') window.__ccRefreshDashboard();
+    }, 300);
   };
 
   // ── Toast ───────────────────────────────────────────────────────────────
