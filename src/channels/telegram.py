@@ -8,6 +8,7 @@ through the unified agent, and sends replies back via Telegram Bot API.
 from __future__ import annotations
 
 import os
+import re
 import logging
 
 import httpx
@@ -67,7 +68,7 @@ def parse_update(update: dict) -> dict | None:
 async def send_message(chat_id: int, text: str, reply_to: int | None = None) -> bool:
     """Send a text message back to a Telegram chat."""
     if not TELEGRAM_BOT_TOKEN:
-        logger.warning("Telegram bot token not configured")
+        logger.warning("Telegram bot token not configured — cannot send message")
         return False
 
     # Telegram has a 4096 char limit per message — split if needed
@@ -85,13 +86,27 @@ async def send_message(chat_id: int, text: str, reply_to: int | None = None) -> 
 
             try:
                 resp = await client.post(f"{TELEGRAM_API}/sendMessage", json=payload)
-                if resp.status_code != 200:
-                    # Retry without Markdown if parsing fails
+                try:
+                    resp_data = resp.json()
+                except Exception:
+                    resp_data = {}
+
+                # Telegram returns 200 with {"ok": false} for API errors like
+                # bad Markdown. Also handle HTTP-level errors (400, etc.).
+                if resp.status_code != 200 or not resp_data.get("ok", False):
+                    error_desc = resp_data.get("description", resp.text[:200])
+                    logger.warning(
+                        f"Telegram send failed (parse_mode=Markdown): {error_desc} — retrying as plain text"
+                    )
                     payload.pop("parse_mode", None)
+                    # Also strip Markdown characters that may have caused the failure
+                    payload["text"] = _strip_markdown(chunk)
                     resp = await client.post(f"{TELEGRAM_API}/sendMessage", json=payload)
-                resp.raise_for_status()
+                    if resp.status_code != 200:
+                        logger.error(f"Telegram send failed even as plain text: {resp.text[:300]}")
+                        return False
             except Exception as e:
-                logger.error(f"Telegram send failed: {e}")
+                logger.error(f"Telegram send failed for chat {chat_id}: {e}")
                 return False
     return True
 
@@ -150,6 +165,18 @@ async def get_bot_info() -> dict:
             return resp.json()
         except Exception as e:
             return {"ok": False, "description": str(e)}
+
+
+def _strip_markdown(text: str) -> str:
+    """Remove Markdown formatting that Telegram may reject."""
+    # Remove bold/italic markers
+    text = re.sub(r'\*+', '', text)
+    text = re.sub(r'_+', ' ', text)
+    # Remove inline code backticks
+    text = re.sub(r'`+', '', text)
+    # Remove link syntax [text](url) -> text (url)
+    text = re.sub(r'\[([^\]]+)\]\(([^)]+)\)', r'\1 (\2)', text)
+    return text
 
 
 def _split_message(text: str, max_len: int = 4000) -> list[str]:

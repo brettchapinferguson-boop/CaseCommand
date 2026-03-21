@@ -36,6 +36,18 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="CaseCommand API")
 
+
+@app.on_event("startup")
+async def _auto_register_webhooks():
+    """Auto-register Telegram webhook on server startup so the bot stays connected."""
+    base_url = os.environ.get("BASE_URL", "").rstrip("/")
+    if tg_channel.is_configured() and base_url:
+        try:
+            result = await tg_channel.set_webhook(f"{base_url}/webhook/telegram")
+            logger.info(f"Telegram webhook auto-registered: {result}")
+        except Exception as e:
+            logger.error(f"Failed to auto-register Telegram webhook: {e}")
+
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
 SUPABASE_SECRET_KEY = os.environ.get("SUPABASE_SECRET_KEY", "") or os.environ.get("SUPABASE_SERVICE_KEY", "") or os.environ.get("SUPABASE_KEY", "")
 AUTH_TOKEN = os.environ.get("AUTH_TOKEN", "")
@@ -829,24 +841,31 @@ async def _process_telegram_message(chat_id: int, text: str, reply_to: int):
         _save_conversation_messages(session_id, "telegram", text, reply_text, response)
 
         # Send text reply
-        await tg_channel.send_message(chat_id, reply_text, reply_to=reply_to)
+        sent = await tg_channel.send_message(chat_id, reply_text, reply_to=reply_to)
+        if not sent:
+            logger.error(f"Failed to send Telegram reply to chat {chat_id}")
 
         # If a document was generated, also send the file
         if document:
             filepath = DOCUMENTS_DIR / document["filename"]
             if filepath.exists():
-                await tg_channel.send_document(
+                doc_sent = await tg_channel.send_document(
                     chat_id,
                     str(filepath),
                     caption=f"📄 {document['title']}",
                 )
+                if not doc_sent:
+                    logger.error(f"Failed to send Telegram document to chat {chat_id}")
     except Exception as e:
-        logger.error(f"Telegram processing error: {e}")
-        await tg_channel.send_message(
-            chat_id,
-            "⚠️ Sorry, I encountered an error processing your request. Please try again.",
-            reply_to=reply_to,
-        )
+        logger.error(f"Telegram processing error for chat {chat_id}: {e}", exc_info=True)
+        try:
+            await tg_channel.send_message(
+                chat_id,
+                "Sorry, I encountered an error processing your request. Please try again.",
+                reply_to=reply_to,
+            )
+        except Exception:
+            logger.error(f"Failed to send error message to Telegram chat {chat_id}")
 
 
 # ---------------------------------------------------------------------------
