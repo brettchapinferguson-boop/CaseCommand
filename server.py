@@ -351,11 +351,20 @@ async def chat(req: ChatRequest, _: None = Depends(verify_token)):
     # Persist this exchange to the database
     _save_conversation_messages(session_id, "web", req.message, reply_text, response)
 
+    # Expose tool call details so the UI can show what actions Casey took
+    actions = []
+    for tc in response.get("tool_calls", []):
+        actions.append({
+            "tool": tc.get("name"),
+            "input": tc.get("input", {}),
+        })
+
     return {
         "response": reply_text,
         "model": response["model"],
         "document": document,
         "session_id": session_id,
+        "actions": actions,
     }
 
 
@@ -398,7 +407,10 @@ def _save_conversation_messages(
                 "content": assistant_reply,
                 "metadata": {
                     "model": response.get("model", ""),
-                    "tool_calls": [tc.get("name") for tc in response.get("tool_calls", [])],
+                    "tool_calls": [
+                        {"tool": tc.get("name"), "input": tc.get("input", {})}
+                        for tc in response.get("tool_calls", [])
+                    ],
                 },
                 "created_at": now,
             },
