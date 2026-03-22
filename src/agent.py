@@ -192,6 +192,13 @@ def _get_proxy() -> str | None:
 
 async def _call_claude(messages: list, tools: list | None = None, max_tokens: int = 4096) -> dict:
     """Single async call to the Anthropic Messages API."""
+    import logging as _logging
+    _logger = _logging.getLogger(__name__)
+
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        raise RuntimeError("ANTHROPIC_API_KEY is not set")
+
     payload: dict = {
         "model": MODEL,
         "max_tokens": max_tokens,
@@ -204,12 +211,29 @@ async def _call_claude(messages: list, tools: list | None = None, max_tokens: in
     async with httpx.AsyncClient(
         timeout=120.0, trust_env=False, proxy=_get_proxy()
     ) as client:
-        resp = await client.post(
-            f"{BASE_URL}/messages",
-            headers=_get_headers(),
-            json=payload,
-        )
-        resp.raise_for_status()
+        try:
+            resp = await client.post(
+                f"{BASE_URL}/messages",
+                headers=_get_headers(),
+                json=payload,
+            )
+        except httpx.TimeoutException:
+            _logger.error("Claude API request timed out")
+            raise RuntimeError("The AI service timed out. Please try again.")
+        except httpx.ConnectError as e:
+            _logger.error(f"Claude API connection error: {e}")
+            raise RuntimeError("Could not connect to AI service. Please try again later.")
+
+        if resp.status_code == 429:
+            _logger.warning("Claude API rate limited (429)")
+            raise RuntimeError("AI service is temporarily busy. Please wait a moment and try again.")
+        if resp.status_code >= 500:
+            _logger.error(f"Claude API server error: {resp.status_code}")
+            raise RuntimeError("AI service is temporarily unavailable. Please try again later.")
+        if resp.status_code != 200:
+            _logger.error(f"Claude API error {resp.status_code}: {resp.text[:300]}")
+            raise RuntimeError(f"AI service returned an error (HTTP {resp.status_code})")
+
         return resp.json()
 
 
@@ -391,65 +415,83 @@ async def process_message(
         })
 
     # --- Agent loop: call Claude, handle tool use, repeat ---
+    import logging as _logging
+    _logger = _logging.getLogger(__name__)
     max_iterations = 5
     all_tool_calls: list[dict] = []
 
-    for _ in range(max_iterations):
-        data = await _call_claude(messages, tools=TOOLS)
-        content_blocks = data.get("content", [])
-        stop_reason = data.get("stop_reason", "end_turn")
+    try:
+        for _ in range(max_iterations):
+            data = await _call_claude(messages, tools=TOOLS)
+            content_blocks = data.get("content", [])
+            stop_reason = data.get("stop_reason", "end_turn")
 
-        reply_text = ""
-        tool_uses = []
+            reply_text = ""
+            tool_uses = []
 
-        for block in content_blocks:
-            if block["type"] == "text":
-                reply_text += block["text"]
-            elif block["type"] == "tool_use":
-                tool_uses.append(block)
+            for block in content_blocks:
+                if block["type"] == "text":
+                    reply_text += block["text"]
+                elif block["type"] == "tool_use":
+                    tool_uses.append(block)
 
-        if not tool_uses or stop_reason != "tool_use":
-            # No tools invoked — return the text reply
-            return {
-                "reply": reply_text.strip(),
-                "tool_calls": all_tool_calls,
-                "model": data.get("model", MODEL),
-            }
-
-        # Claude wants to use tools — execute them and loop
-        # First, add Claude's response (with tool_use blocks) to messages
-        messages.append({"role": "assistant", "content": content_blocks})
-
-        # Execute each tool and build the tool_result message
-        tool_results = []
-        for tu in tool_uses:
-            tool_call_record = {
-                "id": tu["id"],
-                "name": tu["name"],
-                "input": tu["input"],
-            }
-            all_tool_calls.append(tool_call_record)
-
-            # generate_legal_document is handled post-loop by the server
-            if tu["name"] == "generate_legal_document":
-                result = {
-                    "status": "success",
-                    "message": f"Document '{tu['input'].get('title', 'document')}' will be compiled.",
+            if not tool_uses or stop_reason != "tool_use":
+                # No tools invoked — return the text reply
+                return {
+                    "reply": reply_text.strip(),
+                    "tool_calls": all_tool_calls,
+                    "model": data.get("model", MODEL),
                 }
-            else:
-                result = await _execute_tool(tu["name"], tu["input"], ctx)
 
-            tool_results.append({
-                "type": "tool_result",
-                "tool_use_id": tu["id"],
-                "content": json.dumps(result),
-            })
+            # Claude wants to use tools — execute them and loop
+            # First, add Claude's response (with tool_use blocks) to messages
+            messages.append({"role": "assistant", "content": content_blocks})
 
-        messages.append({"role": "user", "content": tool_results})
+            # Execute each tool and build the tool_result message
+            tool_results = []
+            for tu in tool_uses:
+                tool_call_record = {
+                    "id": tu["id"],
+                    "name": tu["name"],
+                    "input": tu["input"],
+                }
+                all_tool_calls.append(tool_call_record)
 
-    # Fallback if we exhaust iterations
-    return {
-        "reply": reply_text.strip() if reply_text else "I encountered a complex request. Could you try rephrasing?",
-        "tool_calls": all_tool_calls,
-        "model": data.get("model", MODEL),
-    }
+                # generate_legal_document is handled post-loop by the server
+                if tu["name"] == "generate_legal_document":
+                    result = {
+                        "status": "success",
+                        "message": f"Document '{tu['input'].get('title', 'document')}' will be compiled.",
+                    }
+                else:
+                    result = await _execute_tool(tu["name"], tu["input"], ctx)
+
+                tool_results.append({
+                    "type": "tool_result",
+                    "tool_use_id": tu["id"],
+                    "content": json.dumps(result),
+                })
+
+            messages.append({"role": "user", "content": tool_results})
+
+        # Fallback if we exhaust iterations
+        return {
+            "reply": reply_text.strip() if reply_text else "I encountered a complex request. Could you try rephrasing?",
+            "tool_calls": all_tool_calls,
+            "model": data.get("model", MODEL),
+        }
+    except RuntimeError as e:
+        # Friendly error from _call_claude (rate limit, timeout, etc.)
+        _logger.error(f"Agent loop error: {e}")
+        return {
+            "reply": str(e),
+            "tool_calls": all_tool_calls,
+            "model": MODEL,
+        }
+    except Exception as e:
+        _logger.error(f"Unexpected agent error: {e}", exc_info=True)
+        return {
+            "reply": "I encountered an unexpected error processing your request. Please try again.",
+            "tool_calls": all_tool_calls,
+            "model": MODEL,
+        }

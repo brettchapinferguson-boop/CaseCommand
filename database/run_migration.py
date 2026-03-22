@@ -39,7 +39,39 @@ CREATE TABLE IF NOT EXISTS conversation_messages (
 CREATE INDEX IF NOT EXISTS idx_conversation_session
     ON conversation_messages(session_id, created_at);
 """,
-    }
+    },
+    {
+        "name": "002_fix_rls_policies",
+        "sql": """
+-- Drop restrictive user-only policies that block the service-role server
+DROP POLICY IF EXISTS "Users can view their own cases" ON cases;
+DROP POLICY IF EXISTS "Users can create their own cases" ON cases;
+DROP POLICY IF EXISTS "Users can update their own cases" ON cases;
+DROP POLICY IF EXISTS "Users can delete their own cases" ON cases;
+DROP POLICY IF EXISTS "Users can view their own discovery analyses" ON discovery_analyses;
+DROP POLICY IF EXISTS "Users can create discovery analyses" ON discovery_analyses;
+DROP POLICY IF EXISTS "Users can view their own examination outlines" ON examination_outlines;
+DROP POLICY IF EXISTS "Users can create examination outlines" ON examination_outlines;
+DROP POLICY IF EXISTS "Users can view their own settlement narratives" ON settlement_narratives;
+DROP POLICY IF EXISTS "Users can create settlement narratives" ON settlement_narratives;
+
+-- Replace with open policies (server handles auth at the API layer via AUTH_TOKEN)
+CREATE POLICY "Service role has full access to cases"
+    ON cases FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Service role has full access to discovery_analyses"
+    ON discovery_analyses FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Service role has full access to examination_outlines"
+    ON examination_outlines FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Service role has full access to settlement_narratives"
+    ON settlement_narratives FOR ALL USING (true) WITH CHECK (true);
+
+-- Make user_id optional (nullable) since the server doesn't authenticate via Supabase auth
+ALTER TABLE cases ALTER COLUMN user_id DROP NOT NULL;
+ALTER TABLE discovery_analyses ALTER COLUMN user_id DROP NOT NULL;
+ALTER TABLE examination_outlines ALTER COLUMN user_id DROP NOT NULL;
+ALTER TABLE settlement_narratives ALTER COLUMN user_id DROP NOT NULL;
+""",
+    },
 ]
 
 

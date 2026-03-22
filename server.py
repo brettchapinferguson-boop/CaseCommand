@@ -42,11 +42,24 @@ async def _auto_register_webhooks():
     """Auto-register Telegram webhook on server startup so the bot stays connected."""
     base_url = os.environ.get("BASE_URL", "").rstrip("/")
     if tg_channel.is_configured() and base_url:
-        try:
-            result = await tg_channel.set_webhook(f"{base_url}/webhook/telegram")
-            logger.info(f"Telegram webhook auto-registered: {result}")
-        except Exception as e:
-            logger.error(f"Failed to auto-register Telegram webhook: {e}")
+        webhook_url = f"{base_url}/webhook/telegram"
+        for attempt in range(3):
+            try:
+                result = await tg_channel.set_webhook(webhook_url)
+                if result.get("ok"):
+                    logger.info(f"Telegram webhook registered: {webhook_url}")
+                    break
+                else:
+                    logger.warning(f"Telegram webhook registration returned ok=false: {result}")
+            except Exception as e:
+                logger.error(f"Telegram webhook registration attempt {attempt + 1} failed: {e}")
+                if attempt < 2:
+                    import asyncio
+                    await asyncio.sleep(2 ** attempt)
+        else:
+            logger.error("Failed to register Telegram webhook after 3 attempts")
+    elif tg_channel.is_configured() and not base_url:
+        logger.warning("TELEGRAM_BOT_TOKEN is set but BASE_URL is missing — cannot register webhook")
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
 SUPABASE_SECRET_KEY = os.environ.get("SUPABASE_SECRET_KEY", "") or os.environ.get("SUPABASE_SERVICE_KEY", "") or os.environ.get("SUPABASE_KEY", "")
@@ -302,8 +315,16 @@ def create_case(case: CaseCreate, _: None = Depends(verify_token)):
         "client_name": case.client or "TBD",
         "opposing_party": case.opposing or "TBD",
     }
-    result = supabase.table("cases").insert(data).execute()
-    return result.data[0]
+    try:
+        result = supabase.table("cases").insert(data).execute()
+        if not result.data:
+            raise HTTPException(status_code=500, detail="Case was not created — database returned no data")
+        return result.data[0]
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to create case: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to create case: {e}")
 
 
 @app.post("/api/chat")
@@ -315,7 +336,16 @@ async def chat(req: ChatRequest, _: None = Depends(verify_token)):
     # Load conversation history from database for this session
     history = _load_conversation_history(session_id)
 
-    response = await process_message(req.message, conversation_history=history, context=ctx)
+    try:
+        response = await process_message(req.message, conversation_history=history, context=ctx)
+    except Exception as e:
+        logger.error(f"Chat processing error: {e}", exc_info=True)
+        response = {
+            "reply": "I encountered an error processing your request. Please try again.",
+            "tool_calls": [],
+            "model": "claude-sonnet-4-6",
+        }
+
     reply_text, document = _handle_agent_response(response, req.message)
 
     # Persist this exchange to the database
@@ -487,24 +517,46 @@ async def analyze_document(file: UploadFile = File(...), _: None = Depends(verif
     Upload a case document (PDF, DOCX, TXT). Returns extracted case metadata
     for human-in-the-loop review before case creation.
     """
-    content = await file.read()
+    try:
+        content = await file.read()
+    except Exception as e:
+        logger.error(f"Failed to read uploaded file: {e}")
+        raise HTTPException(status_code=400, detail="Could not read the uploaded file")
+
     if not content:
         raise HTTPException(status_code=400, detail="Empty file")
 
-    text = _extract_text_from_upload(content, file.filename or "")
+    filename = file.filename or "unknown"
+    try:
+        text = _extract_text_from_upload(content, filename)
+    except Exception as e:
+        logger.error(f"Text extraction failed for {filename}: {e}")
+        text = ""
+
     if not text.strip():
-        # Return a graceful fallback so the UI still shows the confirmation form
         return {
             "case_name": "New Case",
             "case_type": "Other",
             "client_name": "TBD",
             "opposing_party": "TBD",
             "summary": "Could not extract text from document. Please fill in the details manually.",
-            "filename": file.filename,
+            "filename": filename,
         }
 
-    extracted = await _call_claude_for_case_extraction(text)
-    extracted["filename"] = file.filename
+    try:
+        extracted = await _call_claude_for_case_extraction(text)
+    except Exception as e:
+        logger.error(f"Case extraction failed for {filename}: {e}")
+        return {
+            "case_name": "New Case",
+            "case_type": "Other",
+            "client_name": "TBD",
+            "opposing_party": "TBD",
+            "summary": f"Document text was extracted but AI analysis failed. Please review and fill in details manually.",
+            "filename": filename,
+        }
+
+    extracted["filename"] = filename
     return extracted
 
 
