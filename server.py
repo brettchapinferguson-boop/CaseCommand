@@ -9,8 +9,10 @@ import os
 import re
 import json
 import uuid
+import shlex
 import logging
 import io
+import subprocess
 from pathlib import Path
 from datetime import datetime, timezone
 from dotenv import load_dotenv
@@ -39,6 +41,15 @@ app = FastAPI(title="CaseCommand API")
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
 SUPABASE_SECRET_KEY = os.environ.get("SUPABASE_SECRET_KEY", "") or os.environ.get("SUPABASE_SERVICE_KEY", "") or os.environ.get("SUPABASE_KEY", "")
 AUTH_TOKEN = os.environ.get("AUTH_TOKEN", "")
+
+# Remote terminal execution (off by default for safety)
+TERMINAL_ENABLED = os.environ.get("TERMINAL_ENABLED", "").lower() in ("1", "true", "yes", "on")
+TERMINAL_ALLOWED_COMMANDS = {
+    c.strip() for c in os.environ.get("TERMINAL_ALLOWED_COMMANDS", "").split(",") if c.strip()
+}
+TERMINAL_MAX_TIMEOUT = int(os.environ.get("TERMINAL_MAX_TIMEOUT", "60"))
+TERMINAL_MAX_OUTPUT = int(os.environ.get("TERMINAL_MAX_OUTPUT", "65536"))
+TERMINAL_DEFAULT_CWD = os.environ.get("TERMINAL_DEFAULT_CWD", str(Path(__file__).parent))
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_SECRET_KEY)
 ai_client = CaseCommandAI()
@@ -112,6 +123,12 @@ class OutlineRequest(BaseModel):
     exam_type: str = "cross"
     case_theory: str = ""
     documents: list = []
+
+
+class TerminalRequest(BaseModel):
+    command: str
+    cwd: str | None = None
+    timeout: int | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -256,6 +273,88 @@ def serve_frontend():
 @app.get("/api/health")
 def health(_: None = Depends(verify_token)):
     return {"status": "ok", "model": "claude-sonnet-4-6"}
+
+
+@app.post("/api/terminal")
+def run_terminal(req: TerminalRequest, _: None = Depends(verify_token)):
+    """Run a shell command on the server.
+
+    Disabled unless TERMINAL_ENABLED=true. Protected by AUTH_TOKEN.
+    Commands are tokenized with shlex and executed without a shell, so pipes,
+    redirects, and command substitution are not supported — run one command
+    at a time. If TERMINAL_ALLOWED_COMMANDS is set, only those binaries may
+    be invoked.
+    """
+    if not TERMINAL_ENABLED:
+        raise HTTPException(
+            status_code=403,
+            detail="Remote terminal disabled. Set TERMINAL_ENABLED=true to enable.",
+        )
+    if not AUTH_TOKEN:
+        raise HTTPException(
+            status_code=403,
+            detail="Remote terminal requires AUTH_TOKEN to be configured.",
+        )
+
+    raw = (req.command or "").strip()
+    if not raw:
+        raise HTTPException(status_code=400, detail="command is required")
+
+    try:
+        argv = shlex.split(raw)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"Could not parse command: {e}")
+    if not argv:
+        raise HTTPException(status_code=400, detail="command is empty after parsing")
+
+    program = Path(argv[0]).name
+    if TERMINAL_ALLOWED_COMMANDS and program not in TERMINAL_ALLOWED_COMMANDS:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Command '{program}' is not in the allowlist.",
+        )
+
+    timeout = req.timeout if req.timeout and req.timeout > 0 else TERMINAL_MAX_TIMEOUT
+    timeout = min(timeout, TERMINAL_MAX_TIMEOUT)
+
+    cwd = req.cwd or TERMINAL_DEFAULT_CWD
+    if not Path(cwd).is_dir():
+        raise HTTPException(status_code=400, detail=f"cwd does not exist: {cwd}")
+
+    try:
+        result = subprocess.run(
+            argv,
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+        )
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail=f"Command not found: {program}")
+    except subprocess.TimeoutExpired as e:
+        return {
+            "command": raw,
+            "cwd": cwd,
+            "exit_code": None,
+            "stdout": (e.stdout or "")[:TERMINAL_MAX_OUTPUT] if isinstance(e.stdout, str) else "",
+            "stderr": (e.stderr or "")[:TERMINAL_MAX_OUTPUT] if isinstance(e.stderr, str) else "",
+            "timed_out": True,
+            "timeout": timeout,
+        }
+
+    return {
+        "command": raw,
+        "cwd": cwd,
+        "exit_code": result.returncode,
+        "stdout": result.stdout[:TERMINAL_MAX_OUTPUT],
+        "stderr": result.stderr[:TERMINAL_MAX_OUTPUT],
+        "timed_out": False,
+        "truncated": (
+            len(result.stdout) > TERMINAL_MAX_OUTPUT
+            or len(result.stderr) > TERMINAL_MAX_OUTPUT
+        ),
+    }
 
 
 @app.post("/api/ai")
