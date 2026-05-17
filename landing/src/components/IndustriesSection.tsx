@@ -11,7 +11,7 @@ const INDUSTRIES = [
 
 export default function IndustriesSection() {
   return (
-    <section className="section-pad bg-navy-50/60">
+    <section id="industries" className="section-pad bg-navy-50/60">
       <div className="container-page">
         <div className="max-w-3xl">
           <span className="eyebrow">Industries Served</span>

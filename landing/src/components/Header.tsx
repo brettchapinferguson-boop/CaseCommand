@@ -2,10 +2,10 @@ import { useEffect, useState } from 'react';
 import Logo from './Logo';
 
 const NAV_LINKS = [
-  { href: '#services', label: 'Services' },
-  { href: '#audits', label: 'Audits' },
-  { href: '#solutions', label: 'Solutions' },
-  { href: '#about', label: 'About' },
+  { href: '#approach', label: 'Approach' },
+  { href: '#audit', label: 'Audit' },
+  { href: '#build', label: 'Build' },
+  { href: '#team', label: 'Team' },
   { href: '#packages', label: 'Engagements' },
   { href: '#faq', label: 'FAQ' },
 ];

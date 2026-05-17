@@ -5,7 +5,7 @@
 @layer base {
   html {
     scroll-behavior: smooth;
-    scroll-padding-top: 5rem;
+    scroll-padding-top: 6rem;
   }
 
   body {
@@ -74,4 +74,62 @@
   .section-intro {
     @apply mt-5 max-w-3xl text-base leading-relaxed text-charcoal-600 sm:text-lg;
   }
+
+  /* Reveal-on-scroll utility — toggled by the useReveal hook */
+  .reveal {
+    opacity: 0;
+    transform: translateY(28px);
+    transition:
+      opacity 700ms cubic-bezier(0.22, 0.61, 0.36, 1),
+      transform 700ms cubic-bezier(0.22, 0.61, 0.36, 1);
+    will-change: opacity, transform;
+  }
+  .reveal.in-view {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  .reveal-delay-1 { transition-delay: 80ms; }
+  .reveal-delay-2 { transition-delay: 160ms; }
+  .reveal-delay-3 { transition-delay: 240ms; }
+  .reveal-delay-4 { transition-delay: 320ms; }
+  .reveal-delay-5 { transition-delay: 400ms; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .reveal {
+      opacity: 1;
+      transform: none;
+      transition: none;
+    }
+  }
+
+  /* Marquee — horizontal moving text */
+  .marquee-track {
+    display: inline-flex;
+    gap: 3rem;
+    padding-right: 3rem;
+    animation: marquee 38s linear infinite;
+  }
+  .marquee-pause:hover .marquee-track {
+    animation-play-state: paused;
+  }
+  @keyframes marquee {
+    0% { transform: translateX(0); }
+    100% { transform: translateX(-50%); }
+  }
+
+  /* Side nav link active state */
+  .side-link-dot {
+    @apply h-1.5 w-1.5 shrink-0 rounded-full bg-charcoal-300 transition-all duration-300;
+  }
+  .side-link-active .side-link-dot {
+    @apply h-2.5 w-2.5 bg-gold-500 ring-2 ring-gold-200;
+  }
+  .side-link-active .side-link-label {
+    @apply text-navy-900;
+  }
+}
+
+@layer utilities {
+  .text-balance { text-wrap: balance; }
+  .text-pretty { text-wrap: pretty; }
 }

@@ -8,14 +8,17 @@ import Hero from './components/Hero';
 import IndustriesSection from './components/IndustriesSection';
 import LeadForm from './components/LeadForm';
 import LegacySoftware from './components/LegacySoftware';
+import Marquee from './components/Marquee';
+import OurApproach from './components/OurApproach';
 import PackagesSection from './components/PackagesSection';
-import ProcessSection from './components/ProcessSection';
 import RegulatoryLandscape from './components/RegulatoryLandscape';
 import RiskSection from './components/RiskSection';
+import ScrollProgress from './components/ScrollProgress';
 import ServiceSection from './components/ServiceSection';
-import ServicesOverview from './components/ServicesOverview';
+import SideNav from './components/SideNav';
 import SolutionsIntro from './components/SolutionsIntro';
 import SolutionsSection from './components/SolutionsSection';
+import TheProblem from './components/TheProblem';
 import WhyAnchor from './components/WhyAnchor';
 
 export default function App() {
@@ -27,25 +30,28 @@ export default function App() {
       >
         Skip to content
       </a>
+      <ScrollProgress />
       <Header />
+      <SideNav />
       <main>
         <Hero />
-        <ServicesOverview />
+        <TheProblem />
+        <OurApproach />
 
-        {/* ── Audits Track ── */}
+        {/* Audit foundation */}
         <AuditsIntro />
         <RegulatoryLandscape />
         <RiskSection />
         <ServiceSection />
 
-        {/* ── Solutions Track ── */}
+        {/* Solutions / Build */}
         <SolutionsIntro />
-        <LegacySoftware />
+        <Marquee />
         <SolutionsSection />
+        <LegacySoftware />
 
-        <ProcessSection />
-        <IndustriesSection />
         <About />
+        <IndustriesSection />
         <WhyAnchor />
         <PackagesSection />
         <LeadForm />

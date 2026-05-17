@@ -1,126 +1,77 @@
+import { useReveal } from '../hooks/useReveal';
+
+const PRINCIPLES = [
+  {
+    title: 'Designed around the work',
+    copy: 'We build to the workflow we found in the audit — not a generic feature set the vendor wishes you used.',
+  },
+  {
+    title: 'Working software in weeks',
+    copy: 'Anchor ships in cycles: a focused prototype, then iteration with your team until the system is in daily use. No year-long implementations.',
+  },
+  {
+    title: 'Owned by you',
+    copy: 'You keep the system, the data, and the documentation. No proprietary lock-in. No mystery infrastructure.',
+  },
+];
+
 export default function SolutionsIntro() {
+  const { ref, shown } = useReveal<HTMLDivElement>();
+
   return (
-    <section id="solutions" className="section-pad bg-navy-950 text-white">
+    <section id="build" className="section-pad bg-navy-950 text-white">
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute"
+      />
       <div className="container-page">
-        <div className="grid gap-12 lg:grid-cols-12 lg:gap-16">
+        <div
+          ref={ref}
+          className={`grid gap-12 lg:grid-cols-12 lg:gap-16 reveal ${shown ? 'in-view' : ''}`}
+        >
           <div className="lg:col-span-6">
             <span className="eyebrow text-gold-300 before:bg-gold-400">
-              Track Two · Solutions
+              From Audit To Build
             </span>
-            <h2 className="mt-4 font-serif text-3xl font-bold tracking-tight text-white sm:text-4xl lg:text-[2.6rem] lg:leading-tight">
+            <h2 className="mt-4 font-serif text-3xl font-bold tracking-tight text-white sm:text-4xl lg:text-[2.6rem] lg:leading-tight text-balance">
               You Were Sold AI. You Probably Got A Chatbot.
             </h2>
-            <p className="mt-5 max-w-2xl text-base leading-relaxed text-navy-100/85 sm:text-lg">
-              Every vendor is selling AI. Most businesses ended up with a
-              subscription, a search box, and a vague sense that something is
-              supposed to be happening. We build the systems that actually
-              produce results — agents, automations, integrations, and
-              lightweight software designed around how your business
-              actually runs.
+            <p className="mt-5 max-w-2xl text-base leading-relaxed text-navy-100/85 sm:text-lg text-pretty">
+              The audit tells us where AI could actually help. From there we
+              design and build the systems that produce results — agents,
+              workflow automations, integrations, and bespoke SaaS shaped
+              around the way your business actually runs.
             </p>
-
-            <div className="mt-8 grid gap-4 sm:grid-cols-2">
-              <Stat label="AI tools bought" value="Many" sub="Subscriptions across the team" tone="navy" />
-              <Stat label="AI tools actually integrated" value="Few" sub="Used as a chatbot, not a workflow" tone="navy" />
-              <Stat label="Anchor approach" value="Build" sub="Designed around the actual workflow" tone="gold" />
-              <Stat label="Anchor approach" value="Measure" sub="Tied to a real operational metric" tone="gold" />
-            </div>
+            <p className="mt-4 max-w-2xl text-base leading-relaxed text-navy-100/80 text-pretty">
+              When the right answer is a build, we build. When the right
+              answer is an off-the-shelf tool, we’ll tell you that too.
+            </p>
           </div>
 
           <div className="lg:col-span-6">
-            <div className="grid gap-5 sm:grid-cols-2">
-              <Card
-                title="AI Efficiency Review"
-                copy="A focused review of how your team works today and where AI could actually drive efficiency — not where a vendor wants to sell you a license."
-                bullets={[
-                  'Workflow and bottleneck mapping',
-                  'Tool consolidation recommendations',
-                  'Build-vs-buy analysis',
-                  'A short, prioritized opportunity list',
-                ]}
-              />
-              <Card
-                title="Bespoke AI Builds"
-                copy="When the right answer is to build, we build. Agents, automations, integrations, and lightweight SaaS designed for your specific workflow and deployed with you, not at you."
-                bullets={[
-                  'Custom AI agents and assistants',
-                  'Workflow automations &amp; integrations',
-                  'Lightweight SaaS &amp; internal tools',
-                  'Implementation, training, ongoing support',
-                ]}
-              />
-            </div>
+            <ul role="list" className="grid gap-4 sm:grid-cols-1">
+              {PRINCIPLES.map((p, i) => (
+                <li
+                  key={p.title}
+                  className={`reveal reveal-delay-${i + 1} ${shown ? 'in-view' : ''} flex gap-5 rounded-xl border border-white/10 bg-white/[0.04] p-6 transition-colors hover:border-gold-400/40 hover:bg-white/[0.07]`}
+                >
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-gold-400/15 font-serif text-base font-bold text-gold-300">
+                    {String(i + 1).padStart(2, '0')}
+                  </span>
+                  <div>
+                    <h3 className="font-serif text-lg font-bold text-white">
+                      {p.title}
+                    </h3>
+                    <p className="mt-1.5 text-sm leading-relaxed text-navy-100/80">
+                      {p.copy}
+                    </p>
+                  </div>
+                </li>
+              ))}
+            </ul>
           </div>
         </div>
       </div>
     </section>
-  );
-}
-
-function Stat({
-  label,
-  value,
-  sub,
-  tone,
-}: {
-  label: string;
-  value: string;
-  sub: string;
-  tone: 'navy' | 'gold';
-}) {
-  return (
-    <div className="rounded-xl border border-white/10 bg-white/[0.04] p-5">
-      <p
-        className={`text-[10px] font-semibold uppercase tracking-[0.18em] ${
-          tone === 'gold' ? 'text-gold-300' : 'text-navy-100/60'
-        }`}
-      >
-        {label}
-      </p>
-      <p
-        className={`mt-2 font-serif text-2xl font-bold ${
-          tone === 'gold' ? 'text-gold-200' : 'text-white'
-        }`}
-      >
-        {value}
-      </p>
-      <p className="mt-1 text-xs leading-relaxed text-navy-100/70">{sub}</p>
-    </div>
-  );
-}
-
-function Card({
-  title,
-  copy,
-  bullets,
-}: {
-  title: string;
-  copy: string;
-  bullets: string[];
-}) {
-  return (
-    <div className="flex flex-col rounded-xl border border-white/10 bg-white/[0.04] p-6 transition-colors hover:border-gold-400/40 hover:bg-white/[0.07]">
-      <h3 className="font-serif text-xl font-bold text-white">{title}</h3>
-      <p className="mt-2 text-sm leading-relaxed text-navy-100/80">{copy}</p>
-      <ul role="list" className="mt-4 space-y-2">
-        {bullets.map((bullet) => (
-          <li key={bullet} className="flex items-start gap-2.5 text-sm text-navy-100/90">
-            <svg
-              className="mt-0.5 h-4 w-4 shrink-0 text-gold-300"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-            >
-              <polyline points="20 6 9 17 4 12" />
-            </svg>
-            <span dangerouslySetInnerHTML={{ __html: bullet }} />
-          </li>
-        ))}
-      </ul>
-    </div>
   );
 }

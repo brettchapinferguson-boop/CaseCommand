@@ -1,4 +1,12 @@
+import { useScrollY } from '../hooks/useScroll';
+
 export default function Hero() {
+  const y = useScrollY();
+  // Parallax factors — background drifts slower than scroll for depth
+  const blobA = `translate3d(0, ${y * 0.18}px, 0)`;
+  const blobB = `translate3d(0, ${y * -0.12}px, 0)`;
+  const grid = `translate3d(0, ${y * 0.05}px, 0)`;
+
   return (
     <section
       id="top"
@@ -7,37 +15,39 @@ export default function Hero() {
       <div
         aria-hidden="true"
         className="pointer-events-none absolute inset-0 -z-10 opacity-[0.06] [background-image:linear-gradient(rgba(255,255,255,0.7)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.7)_1px,transparent_1px)] [background-size:48px_48px]"
+        style={{ transform: grid }}
       />
       <div
         aria-hidden="true"
         className="pointer-events-none absolute -top-32 right-[-10%] -z-10 h-[520px] w-[520px] rounded-full bg-gold-500/10 blur-3xl"
+        style={{ transform: blobA }}
       />
       <div
         aria-hidden="true"
         className="pointer-events-none absolute -bottom-40 left-[-10%] -z-10 h-[520px] w-[520px] rounded-full bg-navy-700/40 blur-3xl"
+        style={{ transform: blobB }}
       />
 
       <div className="container-page grid items-center gap-14 pb-24 lg:grid-cols-12 lg:gap-12 lg:pb-32">
         <div className="lg:col-span-7">
           <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/[0.04] px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-gold-300">
             <span className="inline-block h-1.5 w-1.5 rounded-full bg-gold-400" />
-            An AI Firm — Audits &amp; Bespoke Solutions
+            An AI Firm. Built For This Moment.
           </div>
 
           <h1 className="mt-6 font-serif text-4xl font-bold leading-[1.1] tracking-tight text-white sm:text-5xl lg:text-[3.4rem]">
-            Most Businesses Are Buying AI.
+            AI Was Sold As The Answer.
             <span className="block text-gold-300">
-              Few Are Actually Using It.
+              We Help You Find The Right Question.
             </span>
           </h1>
 
           <p className="mt-6 max-w-2xl text-lg leading-relaxed text-navy-100/90">
-            Anchor AI Solutions does two things. We help businesses
-            <em className="not-italic font-medium text-white"> govern </em>
-            the AI already inside their workflows — and we
-            <em className="not-italic font-medium text-white"> build </em>
-            the agents, automations, and bespoke software that turn AI from a
-            chatbot into operational leverage.
+            Anchor AI Solutions helps businesses wade through an overwhelming
+            sea of AI products and noise to identify their real problems —
+            and then designs the specific tools, workflows, and governance
+            that produce real outcomes. Every engagement starts with an
+            audit. Every audit ends in a customized solution.
           </p>
 
           <div className="mt-9 flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -57,104 +67,112 @@ export default function Hero() {
                 <polyline points="12 5 19 12 12 19" />
               </svg>
             </a>
-            <a href="#services" className="btn-secondary">
-              See Our Two Service Tracks
+            <a href="#approach" className="btn-secondary">
+              See How We Work
             </a>
           </div>
 
           <p className="mt-8 max-w-xl text-sm leading-relaxed text-navy-100/70">
-            For law firms, medical practices, financial advisors, agencies, and
-            professional service businesses that want AI to do more than
-            answer prompts.
+            For law firms, medical practices, financial advisors, agencies,
+            and professional service businesses that want more from AI than a
+            chatbot — and want it done without taking on hidden liability.
           </p>
         </div>
 
         <div className="lg:col-span-5">
-          <DualPanel />
+          <HeroVisual />
         </div>
       </div>
     </section>
   );
 }
 
-function DualPanel() {
-  const audits = [
-    { label: 'AI Tools In Use', value: '14 inventoried' },
-    { label: 'Acceptable Use Policy', value: 'In place · v1.2' },
-    { label: 'Vendor Approval Workflow', value: 'Active' },
-    { label: 'Quarterly Governance Review', value: 'Next: Jun 14' },
-  ];
-  const solutions = [
-    { label: 'Client Intake Agent', value: '312 inquiries · 24/7' },
-    { label: 'Document Drafting Pipeline', value: '4.2 hrs saved / matter' },
-    { label: 'Deadline &amp; Calendar Agent', value: 'Synced · Outlook + CRM' },
-    { label: 'Internal Knowledge Search', value: 'Indexed · 18k docs' },
-  ];
-
+function HeroVisual() {
   return (
     <div className="relative animate-fadeUp">
       <div
         aria-hidden="true"
         className="absolute -inset-3 rounded-[1.5rem] bg-gradient-to-br from-gold-400/20 via-transparent to-navy-700/30 blur-2xl"
       />
-      <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-navy-900/80 backdrop-blur">
-        <Panel
-          eyebrow="Audits"
-          title="Governance &amp; Compliance Snapshot"
-          rows={audits}
-          accent="text-gold-300"
-        />
-        <div className="h-px bg-white/10" />
-        <Panel
-          eyebrow="Solutions"
-          title="Active AI Systems Built For Client"
-          rows={solutions}
-          accent="text-emerald-300"
-        />
-        <div className="border-t border-white/10 bg-navy-950/60 px-6 py-3 text-[11px] uppercase tracking-[0.18em] text-navy-100/50">
-          Illustrative dashboard — not a real client
+      <div className="relative aspect-square overflow-hidden rounded-2xl border border-white/10 bg-navy-900/80 backdrop-blur">
+        <svg
+          viewBox="0 0 400 400"
+          aria-hidden="true"
+          className="absolute inset-0 h-full w-full"
+        >
+          <defs>
+            <radialGradient id="ringGlow" cx="50%" cy="50%" r="55%">
+              <stop offset="0" stopColor="#cea84a" stopOpacity="0.18" />
+              <stop offset="1" stopColor="#0f1b35" stopOpacity="0" />
+            </radialGradient>
+            <linearGradient id="ringStroke" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0" stopColor="#dfc070" />
+              <stop offset="1" stopColor="#cea84a" stopOpacity="0.4" />
+            </linearGradient>
+          </defs>
+
+          <rect width="400" height="400" fill="url(#ringGlow)" />
+
+          {/* concentric "anchor" rings */}
+          {[160, 130, 100, 70].map((r, i) => (
+            <circle
+              key={r}
+              cx="200"
+              cy="200"
+              r={r}
+              fill="none"
+              stroke="url(#ringStroke)"
+              strokeWidth={i === 0 ? 1 : 0.6}
+              strokeDasharray={i % 2 === 0 ? '2 6' : '4 4'}
+              opacity={0.55 - i * 0.08}
+            />
+          ))}
+
+          {/* anchor mark */}
+          <g
+            stroke="#dfc070"
+            strokeWidth="3.2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            fill="none"
+            transform="translate(200 200)"
+          >
+            <circle cx="0" cy="-44" r="9" />
+            <line x1="0" y1="-35" x2="0" y2="58" />
+            <path d="M-46 30 C-46 60 -22 76 0 76 C22 76 46 60 46 30" />
+            <line x1="-26" y1="-14" x2="26" y2="-14" />
+          </g>
+
+          {/* satellite nodes — represent listen / audit / build / refine */}
+          {[
+            { x: 200, y: 50, label: 'Listen' },
+            { x: 350, y: 200, label: 'Audit' },
+            { x: 200, y: 350, label: 'Build' },
+            { x: 50, y: 200, label: 'Refine' },
+          ].map((node) => (
+            <g key={node.label}>
+              <circle cx={node.x} cy={node.y} r="6" fill="#cea84a" />
+              <circle cx={node.x} cy={node.y} r="14" fill="none" stroke="#cea84a" strokeOpacity="0.35" />
+              <text
+                x={node.x}
+                y={node.y - 22}
+                fill="#dfc070"
+                fontSize="11"
+                fontWeight="600"
+                textAnchor="middle"
+                fontFamily="Inter, sans-serif"
+                letterSpacing="2"
+              >
+                {node.label.toUpperCase()}
+              </text>
+            </g>
+          ))}
+        </svg>
+
+        <div className="absolute inset-x-0 bottom-0 border-t border-white/10 bg-navy-950/70 px-6 py-3 text-[11px] uppercase tracking-[0.18em] text-navy-100/60">
+          Listen · Audit · Build · Refine
         </div>
       </div>
-    </div>
-  );
-}
-
-function Panel({
-  eyebrow,
-  title,
-  rows,
-  accent,
-}: {
-  eyebrow: string;
-  title: string;
-  rows: { label: string; value: string }[];
-  accent: string;
-}) {
-  return (
-    <div className="px-6 py-5">
-      <div className="flex items-center justify-between">
-        <p className={`text-xs font-semibold uppercase tracking-[0.18em] ${accent}`}>
-          {eyebrow}
-        </p>
-      </div>
-      <p
-        className="mt-1 text-sm font-medium text-white"
-        dangerouslySetInnerHTML={{ __html: title }}
-      />
-      <ul className="mt-4 space-y-2.5">
-        {rows.map((row) => (
-          <li
-            key={row.label}
-            className="flex items-center justify-between gap-4 text-sm"
-          >
-            <span className="text-navy-100/80">{row.label}</span>
-            <span
-              className="font-medium text-white"
-              dangerouslySetInnerHTML={{ __html: row.value }}
-            />
-          </li>
-        ))}
-      </ul>
     </div>
   );
 }

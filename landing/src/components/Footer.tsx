@@ -1,15 +1,15 @@
 import Logo from './Logo';
 
 const SERVICES = [
-  { label: 'Audits — Governance', href: '#audits' },
-  { label: 'Solutions — Bespoke AI', href: '#solutions' },
+  { label: 'Our Approach', href: '#approach' },
+  { label: 'The Audit Foundation', href: '#audit' },
+  { label: 'What We Build', href: '#build' },
   { label: 'Engagement Options', href: '#packages' },
-  { label: 'Industries', href: '#packages' },
 ];
 
 const COMPANY = [
-  { label: 'About', href: '#about' },
-  { label: 'Services Overview', href: '#services' },
+  { label: 'The Team', href: '#team' },
+  { label: 'Industries', href: '#industries' },
   { label: 'FAQ', href: '#faq' },
   { label: 'Book a Consultation', href: '#consult' },
 ];
