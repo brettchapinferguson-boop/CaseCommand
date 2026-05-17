@@ -43,5 +43,6 @@ outlines/
 # Landing page (Node)
 landing/node_modules/
 landing/dist/
+landing/dist-single/
 landing/.vite/
 landing/*.tsbuildinfo
