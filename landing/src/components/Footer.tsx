@@ -1,15 +1,15 @@
 import Logo from './Logo';
 
 const SERVICES = [
-  { label: 'AI Compliance Audit', href: '#audit' },
-  { label: 'Governance Solutions', href: '#solutions' },
-  { label: 'Engagement Packages', href: '#packages' },
-  { label: 'Industries', href: '#industries' },
+  { label: 'Audits — Governance', href: '#audits' },
+  { label: 'Solutions — Bespoke AI', href: '#solutions' },
+  { label: 'Engagement Options', href: '#packages' },
+  { label: 'Industries', href: '#packages' },
 ];
 
 const COMPANY = [
-  { label: 'The Problem', href: '#problem' },
-  { label: 'Why Anchor', href: '#solutions' },
+  { label: 'About', href: '#about' },
+  { label: 'Services Overview', href: '#services' },
   { label: 'FAQ', href: '#faq' },
   { label: 'Book a Consultation', href: '#consult' },
 ];
@@ -23,9 +23,9 @@ export default function Footer() {
           <div className="lg:col-span-5">
             <Logo variant="light" />
             <p className="mt-5 max-w-md text-sm leading-relaxed text-navy-100/75">
-              AI governance, compliance audits, policy systems, and workflow
-              controls for modern businesses. Built on the foundation of
-              Ferguson Legal Tech Consulting.
+              An AI firm for businesses that want both governance and real
+              operational results. Built on the foundation of Ferguson Legal
+              Tech Consulting.
             </p>
             <a
               href="#consult"
@@ -91,10 +91,10 @@ export default function Footer() {
             <ul role="list" className="mt-4 space-y-2.5 text-sm text-navy-100/80">
               <li>
                 <a
-                  href="mailto:hello@anchoraiaudits.com"
+                  href="mailto:hello@anchoraisolutions.com"
                   className="transition-colors hover:text-white"
                 >
-                  hello@anchoraiaudits.com
+                  hello@anchoraisolutions.com
                 </a>
               </li>
               <li>By appointment only</li>
@@ -105,7 +105,7 @@ export default function Footer() {
         <div className="mt-14 border-t border-white/10 pt-6">
           <div className="flex flex-col items-start justify-between gap-4 text-xs text-navy-100/60 sm:flex-row sm:items-center">
             <p>
-              &copy; {year} Anchor AI Audits &amp; Solutions. All rights reserved.
+              &copy; {year} Anchor AI Solutions. All rights reserved.
             </p>
             <p className="max-w-2xl sm:text-right">
               Anchor provides AI governance, compliance, audit, and operational

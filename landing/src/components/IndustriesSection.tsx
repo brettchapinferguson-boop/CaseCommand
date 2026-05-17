@@ -1,62 +1,35 @@
 const INDUSTRIES = [
-  {
-    name: 'Law Firms',
-    note: 'Privileged data, ethics rules, court orders on AI use.',
-  },
-  {
-    name: 'Medical Practices',
-    note: 'HIPAA, patient communications, scribe and intake tools.',
-  },
-  {
-    name: 'HR & Staffing Firms',
-    note: 'Hiring, screening, employee data, EEOC exposure.',
-  },
-  {
-    name: 'Financial Services',
-    note: 'Client data, advice generation, recordkeeping rules.',
-  },
-  {
-    name: 'Real Estate Brokerages',
-    note: 'Disclosures, listings, contract drafting, fair housing.',
-  },
-  {
-    name: 'Marketing Agencies',
-    note: 'Client data, content claims, IP, and brand exposure.',
-  },
-  {
-    name: 'Professional Services',
-    note: 'Confidentiality, client deliverables, billing accuracy.',
-  },
-  {
-    name: 'Consumer-Facing Businesses',
-    note: 'Customer communications, advertising claims, reviews.',
-  },
+  { name: 'Law Firms', note: 'Privileged data, ethics opinions on AI, document &amp; intake automation.' },
+  { name: 'Medical Practices', note: 'HIPAA, AI scribes, intake, patient communications.' },
+  { name: 'HR & Staffing', note: 'Hiring, screening, employment-decision tools, audit trail.' },
+  { name: 'Financial Services', note: 'Client data, advice generation, FINRA/SEC recordkeeping.' },
+  { name: 'Real Estate', note: 'Disclosures, listings, contract drafting, fair-housing risk.' },
+  { name: 'Marketing Agencies', note: 'Client data, content claims, IP, and brand exposure.' },
+  { name: 'Professional Services', note: 'Confidentiality, deliverables, billing accuracy, IP.' },
+  { name: 'Consumer-Facing Businesses', note: 'Customer communications, advertising claims, reviews.' },
 ];
 
 export default function IndustriesSection() {
   return (
-    <section id="industries" className="section-pad bg-white">
+    <section className="section-pad bg-navy-50/60">
       <div className="container-page">
         <div className="max-w-3xl">
           <span className="eyebrow">Industries Served</span>
           <h2 className="section-title mt-4">
-            Built For Businesses Where Risk Matters
+            Built For Firms Where Both Risk And Workflow Matter
           </h2>
           <p className="section-intro">
-            Anchor works with regulated and reputation-sensitive businesses —
-            the ones where an unmanaged AI mistake is more than an
-            inconvenience.
+            Regulated and reputation-sensitive businesses — where an
+            unmanaged AI mistake is more than an inconvenience, and where AI
+            done right can be a meaningful operational advantage.
           </p>
         </div>
 
-        <ul
-          role="list"
-          className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-4"
-        >
+        <ul role="list" className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {INDUSTRIES.map((industry) => (
             <li
               key={industry.name}
-              className="group rounded-xl border border-navy-100 bg-navy-50/50 p-5 transition-all duration-300 hover:border-gold-300 hover:bg-white hover:shadow-card"
+              className="group rounded-xl border border-navy-100 bg-white p-5 transition-all duration-300 hover:-translate-y-0.5 hover:border-gold-300 hover:shadow-card"
             >
               <div className="flex items-center gap-3">
                 <span className="inline-flex h-9 w-9 items-center justify-center rounded-md bg-navy-900 text-gold-300">
@@ -79,9 +52,10 @@ export default function IndustriesSection() {
                   {industry.name}
                 </h3>
               </div>
-              <p className="mt-3 text-sm leading-relaxed text-charcoal-600">
-                {industry.note}
-              </p>
+              <p
+                className="mt-3 text-sm leading-relaxed text-charcoal-600"
+                dangerouslySetInnerHTML={{ __html: industry.note }}
+              />
             </li>
           ))}
         </ul>

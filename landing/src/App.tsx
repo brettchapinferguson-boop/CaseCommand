@@ -1,3 +1,5 @@
+import About from './components/About';
+import AuditsIntro from './components/AuditsIntro';
 import FAQ from './components/FAQ';
 import FinalCTA from './components/FinalCTA';
 import Footer from './components/Footer';
@@ -5,11 +7,14 @@ import Header from './components/Header';
 import Hero from './components/Hero';
 import IndustriesSection from './components/IndustriesSection';
 import LeadForm from './components/LeadForm';
+import LegacySoftware from './components/LegacySoftware';
 import PackagesSection from './components/PackagesSection';
-import ProblemSection from './components/ProblemSection';
 import ProcessSection from './components/ProcessSection';
+import RegulatoryLandscape from './components/RegulatoryLandscape';
 import RiskSection from './components/RiskSection';
 import ServiceSection from './components/ServiceSection';
+import ServicesOverview from './components/ServicesOverview';
+import SolutionsIntro from './components/SolutionsIntro';
 import SolutionsSection from './components/SolutionsSection';
 import WhyAnchor from './components/WhyAnchor';
 
@@ -25,14 +30,24 @@ export default function App() {
       <Header />
       <main>
         <Hero />
-        <ProblemSection />
+        <ServicesOverview />
+
+        {/* ── Audits Track ── */}
+        <AuditsIntro />
+        <RegulatoryLandscape />
         <RiskSection />
         <ServiceSection />
-        <ProcessSection />
+
+        {/* ── Solutions Track ── */}
+        <SolutionsIntro />
+        <LegacySoftware />
         <SolutionsSection />
-        <PackagesSection />
+
+        <ProcessSection />
         <IndustriesSection />
+        <About />
         <WhyAnchor />
+        <PackagesSection />
         <LeadForm />
         <FAQ />
         <FinalCTA />

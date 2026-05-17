@@ -6,6 +6,7 @@ type FormState = {
   email: string;
   phone: string;
   industry: string;
+  interest: string;
   message: string;
 };
 
@@ -23,12 +24,20 @@ const INDUSTRIES = [
   'Other',
 ];
 
+const INTERESTS = [
+  'Audit / Governance',
+  'Solutions / Bespoke Build',
+  'Both — I want to talk through fit',
+  'Not sure yet',
+];
+
 const initial: FormState = {
   name: '',
   company: '',
   email: '',
   phone: '',
   industry: '',
+  interest: '',
   message: '',
 };
 
@@ -57,6 +66,7 @@ export default function LeadForm() {
       next.phone = 'Please enter a valid phone number.';
     }
     if (!form.industry) next.industry = 'Please select an industry.';
+    if (!form.interest) next.interest = 'Please pick the closest fit.';
     return next;
   }
 
@@ -81,19 +91,19 @@ export default function LeadForm() {
           <div className="lg:col-span-5">
             <span className="eyebrow">Get Started</span>
             <h2 className="section-title mt-4">
-              Not Sure Where Your AI Risk Stands?
+              Tell Us What You’re Trying To Solve.
             </h2>
             <p className="section-intro">
-              Download the AI Risk Checklist or book a 30-minute AI compliance
-              consultation. We will review your current AI footprint, talk
-              through what is most at risk, and outline the right first step.
+              Book a 30-minute consultation. We’ll talk through whether your
+              first step is an audit, an efficiency review, a build — or some
+              combination — and what a working engagement would look like.
             </p>
 
             <ul role="list" className="mt-8 space-y-4">
               {[
                 'A focused 30-minute working conversation',
-                'No-pressure scoping for an audit or risk scan',
-                'A short summary of immediate gaps to address',
+                'No-pressure scoping for an audit, review, or build',
+                'A short summary of the right first step',
               ].map((item) => (
                 <li key={item} className="flex items-start gap-3">
                   <span className="mt-1 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-gold-100 text-gold-700">
@@ -174,44 +184,27 @@ export default function LeadForm() {
                     />
                   </div>
 
-                  <div>
-                    <label
-                      htmlFor="industry"
-                      className="block text-sm font-medium text-navy-900"
-                    >
-                      Industry <span className="text-rose-500">*</span>
-                    </label>
-                    <select
+                  <div className="grid gap-5 sm:grid-cols-2">
+                    <SelectField
                       id="industry"
-                      name="industry"
+                      label="Industry"
                       required
                       value={form.industry}
-                      onChange={(e) => update('industry', e.target.value)}
-                      aria-invalid={Boolean(errors.industry)}
-                      aria-describedby={errors.industry ? 'industry-error' : undefined}
-                      className={`mt-2 block w-full appearance-none rounded-md border bg-white px-3.5 py-2.5 text-sm text-charcoal-900 transition-colors focus:border-navy-700 focus:outline-none focus:ring-2 focus:ring-navy-200 ${
-                        errors.industry
-                          ? 'border-rose-400'
-                          : 'border-charcoal-200 hover:border-charcoal-300'
-                      }`}
-                    >
-                      <option value="" disabled>
-                        Select your industry
-                      </option>
-                      {INDUSTRIES.map((opt) => (
-                        <option key={opt} value={opt}>
-                          {opt}
-                        </option>
-                      ))}
-                    </select>
-                    {errors.industry && (
-                      <p
-                        id="industry-error"
-                        className="mt-1.5 text-xs font-medium text-rose-600"
-                      >
-                        {errors.industry}
-                      </p>
-                    )}
+                      placeholder="Select your industry"
+                      options={INDUSTRIES}
+                      error={errors.industry}
+                      onChange={(v) => update('industry', v)}
+                    />
+                    <SelectField
+                      id="interest"
+                      label="Primarily interested in"
+                      required
+                      value={form.interest}
+                      placeholder="Choose the closest fit"
+                      options={INTERESTS}
+                      error={errors.interest}
+                      onChange={(v) => update('interest', v)}
+                    />
                   </div>
 
                   <div>
@@ -227,7 +220,7 @@ export default function LeadForm() {
                       rows={5}
                       value={form.message}
                       onChange={(e) => update('message', e.target.value)}
-                      placeholder="Tell us briefly about your business and what prompted you to reach out."
+                      placeholder="Briefly: what prompted you to reach out, and what would a good outcome look like?"
                       className="mt-2 block w-full rounded-md border border-charcoal-200 bg-white px-3.5 py-2.5 text-sm text-charcoal-900 transition-colors hover:border-charcoal-300 focus:border-navy-700 focus:outline-none focus:ring-2 focus:ring-navy-200"
                     />
                   </div>
@@ -307,6 +300,66 @@ function Field({
   );
 }
 
+type SelectProps = {
+  id: keyof FormState;
+  label: string;
+  required?: boolean;
+  value: string;
+  placeholder: string;
+  options: string[];
+  error?: string;
+  onChange: (value: string) => void;
+};
+
+function SelectField({
+  id,
+  label,
+  required,
+  value,
+  placeholder,
+  options,
+  error,
+  onChange,
+}: SelectProps) {
+  const errorId = `${id}-error`;
+  return (
+    <div>
+      <label
+        htmlFor={id}
+        className="block text-sm font-medium text-navy-900"
+      >
+        {label} {required && <span className="text-rose-500">*</span>}
+      </label>
+      <select
+        id={id}
+        name={id}
+        required={required}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        aria-invalid={Boolean(error)}
+        aria-describedby={error ? errorId : undefined}
+        className={`mt-2 block w-full appearance-none rounded-md border bg-white px-3.5 py-2.5 text-sm text-charcoal-900 transition-colors focus:border-navy-700 focus:outline-none focus:ring-2 focus:ring-navy-200 ${
+          error ? 'border-rose-400' : 'border-charcoal-200 hover:border-charcoal-300'
+        }`}
+      >
+        <option value="" disabled>
+          {placeholder}
+        </option>
+        {options.map((opt) => (
+          <option key={opt} value={opt}>
+            {opt}
+          </option>
+        ))}
+      </select>
+      {error && (
+        <p id={errorId} className="mt-1.5 text-xs font-medium text-rose-600">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function SuccessState({ onReset, name }: { onReset: () => void; name: string }) {
   return (
     <div
@@ -333,8 +386,7 @@ function SuccessState({ onReset, name }: { onReset: () => void; name: string }) 
       </h3>
       <p className="text-base text-charcoal-700">
         Your request has been received. A member of the Anchor team will reach
-        out within one business day to schedule your AI compliance
-        consultation.
+        out within one business day to schedule your consultation.
       </p>
       <button type="button" onClick={onReset} className="btn-outline-navy">
         Submit Another Request

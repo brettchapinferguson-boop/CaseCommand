@@ -2,24 +2,36 @@ import { useState } from 'react';
 
 const FAQS = [
   {
-    q: 'Do small businesses really need AI governance?',
-    a: 'Yes. Small teams often have the least oversight and the fastest informal adoption. That makes hidden AI risk more likely, not less.',
+    q: 'What’s the difference between Audits and Solutions?',
+    a: 'Audits is our governance and compliance practice: visibility into AI use, documented policies, risk scoring, and a defensible record as regulation arrives. Solutions is our build practice: efficiency reviews, agents, automations, integrations, and lightweight SaaS designed for your workflow. The same team runs both, and most engagements eventually touch both.',
   },
   {
-    q: 'Is this only for companies already using advanced AI?',
-    a: 'No. If employees use ChatGPT, Claude, Gemini, Copilot, AI note takers, automations, or browser extensions, the business already has AI governance issues to address.',
+    q: 'Do I need an audit before you build anything?',
+    a: 'No. Some clients start with a Solutions efficiency review and build first. Others start with an audit because they have a governance gap they want closed before deploying more AI. We scope to the goal, not the order.',
+  },
+  {
+    q: 'Do small businesses really need AI governance?',
+    a: 'Yes. Small teams often have the least oversight and the fastest informal adoption. Light regulation today does not equal light regulation tomorrow — and a documented governance record now is the cheapest version of one you will ever produce.',
+  },
+  {
+    q: 'What kind of AI systems do you actually build?',
+    a: 'Custom agents (intake, drafting, research, scheduling), workflow automations across the tools you already use, integrations between systems that don’t talk to each other, and lightweight SaaS — internal dashboards, search interfaces, client portals, deadline calculators, and the like. We focus on systems that ship in weeks and stay in daily use.',
+  },
+  {
+    q: 'Can Anchor really replace tools like Harvey or Relativity?',
+    a: 'For many firms, yes — particularly small and mid-sized firms paying enterprise prices for generic features. The honest answer is that it depends on what the firm actually uses. Our efficiency review is built to answer exactly that question with a build-vs-buy recommendation.',
   },
   {
     q: 'Do you provide legal advice?',
     a: 'Anchor provides AI governance, compliance, audit, and operational consulting. Legal services, if applicable, are provided only through a separate attorney-client engagement.',
   },
   {
-    q: 'What happens after the audit?',
-    a: 'The business receives a risk report, practical recommendations, policy templates, and a roadmap for implementing controls.',
+    q: 'What happens after an audit?',
+    a: 'You receive a risk report, practical recommendations, policy templates, and a roadmap. From there you can implement internally, engage Anchor for Managed AI Governance, or move into a Solutions engagement to build the workflow improvements the audit surfaced.',
   },
   {
-    q: 'Can Anchor help implement solutions?',
-    a: 'Yes. Anchor can help create policies, employee training, governance workflows, dashboards, and AI automation systems aligned with the audit findings.',
+    q: 'What does pricing look like?',
+    a: 'Pricing is project-based and scoped to your firm size and the work. We quote after a discovery call. Audit packages start at a fixed scope; Solutions builds are scoped to the system being delivered, with optional ongoing support.',
   },
 ];
 
@@ -34,8 +46,8 @@ export default function FAQ() {
             <span className="eyebrow">Frequently Asked</span>
             <h2 className="section-title mt-4">Questions From Leadership</h2>
             <p className="section-intro">
-              The most common questions executives ask before scoping an AI
-              compliance engagement.
+              The most common questions executives and owners ask before
+              scoping a first engagement.
             </p>
           </div>
 

@@ -12,23 +12,22 @@ export default function FinalCTA() {
 
       <div className="container-page">
         <div className="mx-auto max-w-3xl text-center">
-          <span className="eyebrow text-gold-300 before:bg-gold-400 justify-center">
+          <span className="eyebrow justify-center text-gold-300 before:bg-gold-400">
             Take The Next Step
           </span>
           <h2 className="mt-4 font-serif text-3xl font-bold tracking-tight text-white sm:text-4xl lg:text-[2.8rem] lg:leading-tight">
-            Bring Your AI Usage Out Of The Shadows.
+            Stop Buying The Promise Of AI. Start Using It.
           </h2>
           <p className="mt-5 text-base leading-relaxed text-navy-100/85 sm:text-lg">
-            Get a clear picture of how AI is being used inside your business —
-            and what needs to be fixed before it becomes a legal, operational,
-            or reputational problem.
+            Whether the right first step is an audit, an efficiency review, or
+            a build — we’ll help you scope it on a 30-minute call.
           </p>
           <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
             <a href="#consult" className="btn-primary">
-              Schedule an AI Compliance Consultation
+              Schedule a Consultation
             </a>
-            <a href="#consult" className="btn-secondary">
-              Download the AI Risk Checklist
+            <a href="#services" className="btn-secondary">
+              See Our Two Service Tracks
             </a>
           </div>
         </div>

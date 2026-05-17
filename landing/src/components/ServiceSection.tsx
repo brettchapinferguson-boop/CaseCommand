@@ -1,15 +1,15 @@
 const DELIVERABLES = [
   {
     title: 'AI Usage Inventory',
-    copy: 'A documented list of every AI tool, plugin, agent, and automation in use across the business.',
+    copy: 'A documented list of every AI tool, plugin, agent, and automation in use across the business — including the ones leadership already knows about.',
   },
   {
-    title: 'Shadow AI Discovery',
-    copy: 'Identification of unsanctioned tools, browser extensions, and personal accounts touching company data.',
+    title: 'Ongoing Tracking System',
+    copy: 'A repeatable process to keep the inventory current as employees adopt new tools and vendors push new features.',
   },
   {
     title: 'Risk Scorecard',
-    copy: 'A scored snapshot of where exposure sits today across confidentiality, accuracy, vendor, and regulatory categories.',
+    copy: 'A scored snapshot across confidentiality, accuracy, vendor, employment, IP, and regulatory readiness.',
   },
   {
     title: 'Data Privacy Review',
@@ -24,8 +24,8 @@ const DELIVERABLES = [
     copy: 'A line-by-line comparison of existing policies against the policies a modern AI-using business needs in place.',
   },
   {
-    title: 'Employee AI Usage Survey',
-    copy: 'A confidential survey that surfaces how employees are actually using AI in their day-to-day work.',
+    title: 'Confidential Employee Survey',
+    copy: 'A short, anonymized survey that surfaces how employees are actually using AI in their day-to-day work.',
   },
   {
     title: 'Governance Roadmap',
@@ -43,23 +43,20 @@ const DELIVERABLES = [
 
 export default function ServiceSection() {
   return (
-    <section id="audit" className="section-pad bg-white">
+    <section className="section-pad bg-white">
       <div className="container-page">
         <div className="max-w-3xl">
-          <span className="eyebrow">Core Service</span>
-          <h2 className="section-title mt-4">The AI Compliance Audit</h2>
+          <span className="eyebrow">Audit Deliverables</span>
+          <h2 className="section-title mt-4">What You Get From An Audit</h2>
           <p className="section-intro">
-            The audit identifies what AI tools are being used, how they are
-            being used, what data is being entered, what workflows depend on
-            AI, where risk exists, and what policies or controls are missing.
-            You walk away with visibility and a defensible plan.
+            The audit identifies what AI tools are being used, how, by whom,
+            and on what data. It produces a documented inventory, a scored
+            view of exposure, and a governance plan you can actually
+            implement.
           </p>
         </div>
 
-        <ul
-          role="list"
-          className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-2"
-        >
+        <ul role="list" className="mt-12 grid gap-4 sm:grid-cols-2">
           {DELIVERABLES.map((item, index) => (
             <li
               key={item.title}
@@ -82,11 +79,12 @@ export default function ServiceSection() {
 
         <div className="mt-12 flex flex-col items-start gap-4 rounded-2xl border border-navy-100 bg-navy-50/60 p-6 sm:flex-row sm:items-center sm:justify-between sm:p-8">
           <p className="max-w-2xl text-base font-medium text-navy-900 sm:text-lg">
-            Most engagements complete an initial audit in 2–4 weeks, sized to
-            your business and the volume of AI activity discovered.
+            Most audits complete in 2–4 weeks, sized to your business and the
+            volume of AI activity discovered. Findings often flow directly
+            into a Solutions engagement.
           </p>
           <a href="#consult" className="btn-outline-navy whitespace-nowrap">
-            Start with a Consultation
+            Scope an Audit
           </a>
         </div>
       </div>

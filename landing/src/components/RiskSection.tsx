@@ -18,7 +18,7 @@ const Icon = ({ children }: { children: React.ReactNode }) => (
 const RISKS: Risk[] = [
   {
     title: 'Data Privacy & Confidentiality',
-    copy: 'Employees may paste client data, financials, medical records, or privileged information into public AI tools. Once submitted, that data may be stored, logged, or used for training.',
+    copy: 'Client data, financials, medical records, or privileged information may flow into AI tools that store, log, or train on it. Governance defines what data is allowed in which tools — on purpose, in writing.',
     icon: (
       <Icon>
         <rect x="3" y="11" width="18" height="11" rx="2" />
@@ -27,8 +27,8 @@ const RISKS: Risk[] = [
     ),
   },
   {
-    title: 'Employment & HR Risk',
-    copy: 'AI used for hiring, performance reviews, scheduling, or discipline can introduce bias and create exposure under federal and state employment law if it is undocumented or unsupervised.',
+    title: 'Employment & HR',
+    copy: 'AI used for hiring, performance reviews, scheduling, or discipline raises bias and disparate-impact questions. Documentation and review checkpoints are how you stay defensible.',
     icon: (
       <Icon>
         <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
@@ -39,8 +39,8 @@ const RISKS: Risk[] = [
     ),
   },
   {
-    title: 'Consumer Protection Risk',
-    copy: 'AI-generated marketing, advice, quotes, or customer communications can create deceptive practice exposure when claims are inaccurate, unverified, or sent without human review.',
+    title: 'Consumer & Marketing Claims',
+    copy: 'AI-generated marketing copy, advice, quotes, or customer communications can create deceptive-practice exposure when claims are inaccurate or sent without human review.',
     icon: (
       <Icon>
         <path d="M3 7h18M3 12h18M3 17h12" />
@@ -48,8 +48,8 @@ const RISKS: Risk[] = [
     ),
   },
   {
-    title: 'Cybersecurity Risk',
-    copy: 'Unapproved AI tools, browser extensions, and agents create new attack surfaces. They can exfiltrate data, bypass DLP controls, or quietly persist inside employee workflows.',
+    title: 'Cybersecurity & Tooling',
+    copy: 'Unapproved AI tools, browser extensions, and agents expand the attack surface. An approved-tool list and a vendor review process is the simplest way to close that loop.',
     icon: (
       <Icon>
         <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
@@ -57,8 +57,8 @@ const RISKS: Risk[] = [
     ),
   },
   {
-    title: 'Vendor & Third-Party Risk',
-    copy: 'Most AI vendors push terms that allow broad data use. Without a vendor review process, your business may already be bound to terms that conflict with client contracts and regulatory duties.',
+    title: 'Vendor & Third-Party Terms',
+    copy: 'Most AI vendor terms allow broad data use by default. Reviewing those terms early prevents conflicts with client contracts, NDAs, and regulatory duties downstream.',
     icon: (
       <Icon>
         <rect x="2" y="7" width="20" height="14" rx="2" />
@@ -67,8 +67,8 @@ const RISKS: Risk[] = [
     ),
   },
   {
-    title: 'Intellectual Property Risk',
-    copy: 'Generative AI can produce content that mirrors copyrighted material or surrenders rights in your own work product. Without rules, ownership and licensing get blurry fast.',
+    title: 'Intellectual Property',
+    copy: 'Generative AI can produce content that mirrors copyrighted material or muddy rights in your own work product. Policies set clear rules on ownership, licensing, and disclosure.',
     icon: (
       <Icon>
         <circle cx="12" cy="12" r="9" />
@@ -77,8 +77,8 @@ const RISKS: Risk[] = [
     ),
   },
   {
-    title: 'Hallucination & Accuracy Risk',
-    copy: 'AI fabricates citations, statistics, facts, and legal conclusions with full confidence. Without human review procedures, those errors land in client deliverables and public statements.',
+    title: 'Accuracy & Reliance',
+    copy: 'AI can fabricate citations, statistics, and conclusions with confidence. Human-review procedures define what gets checked, by whom, before it leaves the building.',
     icon: (
       <Icon>
         <path d="M12 2L2 7l10 5 10-5-10-5z" />
@@ -88,8 +88,8 @@ const RISKS: Risk[] = [
     ),
   },
   {
-    title: 'Regulatory & Audit Readiness Risk',
-    copy: 'New AI rules are arriving at the federal, state, and industry level. Without documentation, inventory, and a governance framework, regulators and auditors have no record to review — and neither do you.',
+    title: 'Audit & Insurance Readiness',
+    copy: 'Insurers, clients, and regulators are starting to ask for documented AI governance. A proper record now is faster, cheaper, and more credible than reconstructing one later.',
     icon: (
       <Icon>
         <path d="M9 11l3 3L22 4" />
@@ -104,21 +104,19 @@ export default function RiskSection() {
     <section className="section-pad bg-navy-50/60">
       <div className="container-page">
         <div className="max-w-3xl">
-          <span className="eyebrow">Risk Landscape</span>
+          <span className="eyebrow">Where Liability Quietly Builds</span>
           <h2 className="section-title mt-4">
-            Unmanaged AI Creates Invisible Liability.
+            Eight Categories We Cover In Every Audit.
           </h2>
           <p className="section-intro">
-            Eight categories of exposure where most small and mid-sized
-            businesses are operating today without governance, documentation, or
-            controls.
+            Each one is manageable on its own. The risk comes from running a
+            business in all eight without documentation. The audit gives you a
+            scored view of where you stand and a roadmap for what to address
+            first.
           </p>
         </div>
 
-        <ul
-          role="list"
-          className="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-4"
-        >
+        <ul role="list" className="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
           {RISKS.map((risk) => (
             <li key={risk.title} className="card flex flex-col">
               <span className="inline-flex h-11 w-11 items-center justify-center rounded-lg bg-navy-900 text-gold-300">

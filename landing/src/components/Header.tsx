@@ -2,11 +2,11 @@ import { useEffect, useState } from 'react';
 import Logo from './Logo';
 
 const NAV_LINKS = [
-  { href: '#problem', label: 'The Problem' },
-  { href: '#audit', label: 'The Audit' },
+  { href: '#services', label: 'Services' },
+  { href: '#audits', label: 'Audits' },
   { href: '#solutions', label: 'Solutions' },
-  { href: '#packages', label: 'Packages' },
-  { href: '#industries', label: 'Industries' },
+  { href: '#about', label: 'About' },
+  { href: '#packages', label: 'Engagements' },
   { href: '#faq', label: 'FAQ' },
 ];
 
@@ -37,11 +37,11 @@ export default function Header() {
       }`}
     >
       <div className="container-page flex h-16 items-center justify-between sm:h-20">
-        <a href="#top" aria-label="Anchor AI Audits and Solutions home" className="rounded">
+        <a href="#top" aria-label="Anchor AI Solutions home" className="rounded">
           <Logo />
         </a>
 
-        <nav aria-label="Primary" className="hidden items-center gap-8 lg:flex">
+        <nav aria-label="Primary" className="hidden items-center gap-7 lg:flex">
           {NAV_LINKS.map((link) => (
             <a key={link.href} href={link.href} className="nav-link">
               {link.label}

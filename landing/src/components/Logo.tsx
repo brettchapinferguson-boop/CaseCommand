@@ -17,7 +17,12 @@ export default function Logo({ className = '', variant = 'dark' }: LogoProps) {
         className="h-9 w-9 shrink-0"
         fill="none"
       >
-        <rect width="64" height="64" rx="10" fill={variant === 'light' ? 'rgba(255,255,255,0.06)' : '#f6eed7'} />
+        <rect
+          width="64"
+          height="64"
+          rx="10"
+          fill={variant === 'light' ? 'rgba(255,255,255,0.06)' : '#f6eed7'}
+        />
         <g
           stroke={stroke}
           strokeWidth="3.2"
@@ -32,10 +37,10 @@ export default function Logo({ className = '', variant = 'dark' }: LogoProps) {
       </svg>
       <div className="flex flex-col leading-tight">
         <span className={`font-serif text-lg font-bold tracking-tight ${wordPrimary}`}>
-          Anchor AI
+          Anchor AI Solutions
         </span>
         <span className={`text-[0.66rem] font-semibold uppercase tracking-[0.22em] ${wordAccent}`}>
-          Audits &amp; Solutions
+          Audits · Governance · Bespoke AI
         </span>
       </div>
     </div>
