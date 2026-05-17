@@ -39,3 +39,10 @@ htmlcov/
 # Generated documents (user downloads)
 documents/
 outlines/
+
+# Landing page (Node)
+landing/node_modules/
+landing/dist/
+landing/dist-single/
+landing/.vite/
+landing/*.tsbuildinfo
