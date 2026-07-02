@@ -1,171 +1,165 @@
-# ⚡ CaseCommand — Production Server
+# ⚡ CaseCommand — AI Litigation Practice Server
 
-AI-powered litigation operating system. One server, everything works.
+An agentic litigation operating system: an AI paralegal that **works your
+cases around the clock** — triaging deadlines, drafting complete work
+product, and staging everything in an attorney review queue — plus an
+interactive CaseCommander agent that can actually *do* things, not just chat.
 
-## Deploy to Render (Recommended)
+## How the autonomy works
 
-1. Push this repo to GitHub
-2. Go to [render.com](https://render.com) → **New → Web Service**
-3. Connect your GitHub repo
-4. Render auto-detects `render.yaml` — just click **Create Web Service**
-5. In the Render dashboard → **Environment** → Add:
-   - `ANTHROPIC_API_KEY` = your key from [console.anthropic.com](https://console.anthropic.com/settings/keys)
-   - `AUTH_TOKEN` = generate with `python -c "import secrets; print(secrets.token_urlsafe(32))"`
-6. Render deploys. You get a URL like `https://casecommand.onrender.com`
+```
+                    ┌────────────────────────────────────────────┐
+                    │       AUTONOMOUS PARALEGAL WORKER          │
+  every hour ──────▶│  1. deterministic deadline sweep (no AI)   │
+                    │  2. agentic cycle: triage, task, DRAFT     │
+                    │  3. daily digest                           │
+                    └───────────────┬────────────────────────────┘
+                                    │ everything lands in the DB
+                                    ▼
+   ┌─────────────┐        ┌──────────────────┐       ┌──────────────────────┐
+   │  Agent tools │───────▶│  ATTORNEY REVIEW │──────▶│ attorney approves &  │
+   │  (13 tools,  │        │  QUEUE (/admin)  │       │ personally sends /   │
+   │ audit-logged)│        │ approve / reject │       │ files (human act)    │
+   └─────────────┘        └──────────────────┘       └──────────────────────┘
+```
 
-That's it. Open the URL on any device — phone, laptop, tablet.
+**The critical design decision:** the agents have *no tools that can reach
+outside the practice*. No email, no filing, no service. They prepare; the
+attorney reviews, approves, and sends. This is not a limitation — it is the
+architecture California professional responsibility requires:
 
-## Run Locally
+- **RPC 5.3 / ABA Formal Op. 512** — AI is supervised like a nonlawyer
+  assistant; the audit log is your supervision record.
+- **Proposed CA RPC 1.1 amendment (2026)** — independent attorney
+  verification of every AI output used in a representation.
+- **Noland v. Land of the Free (Cal. Ct. App. 2025)** — $10K sanctions for
+  unverified AI citations. Every AI draft containing citations here
+  auto-generates a mandatory "verify citations" task.
+- **RPC 1.2(a)** — settlement decisions belong to the client; the agent
+  analyzes and recommends only.
+
+## What the agents can do
+
+| Capability | How |
+|---|---|
+| **Autonomous cycles** | Background worker runs hourly: sweeps deadlines → tasks, drafts due documents, writes daily digest |
+| **Agentic chat** | Tell CaseCommander "we got discovery responses from Smith Trucking today, served by mail" → it computes the 45-day motion deadline, calendars it, creates tasks, and starts the M&C letter |
+| **CA deadline engine** | `rules.py` computes CCP/CRC deadlines from trigger events: court-day math, holiday rolls, §1013/§1010.6 service extensions, trial-anchored chains (MSJ, expert exchange, discovery cutoffs, §998) |
+| **Drafting on demand** | `/api/agent/draft` or the dashboard: M&C letters, motions, separate statements, complaints, demand letters, cross outlines |
+| **Review queue** | `/admin` dashboard: read full drafts, approve/reject with notes, one-click task completion |
+| **Supervision trail** | Every agent action audit-logged; every cycle recorded with token usage |
+
+## Quick start
 
 ```bash
-# 1. Install dependencies
 pip install -r requirements.txt
-
-# 2. Configure
-cp .env.example .env
-# Edit .env → paste your Anthropic API key
-# Get one at: https://console.anthropic.com/settings/keys
-
-# 3. Run
+cp .env.example .env       # add your ANTHROPIC_API_KEY
 python server.py
 ```
 
-Open **http://localhost:3000** — that's it.
+- **http://localhost:3000** — case UI
+- **http://localhost:3000/admin** — paralegal dashboard & review queue
+- **http://localhost:3000/docs** — full API docs (Swagger)
 
-No browser API keys. No CORS issues. No configuration screens.
-Your API key lives in `.env` on the server and never touches the browser.
+The paralegal worker starts automatically (hourly by default). Trigger a
+cycle immediately with the dashboard button or `POST /api/agent/cycle`.
+Even with no API key, the deterministic deadline sweep still runs — nothing
+falls through the cracks.
 
-## Run with Docker
+## Deploy to Render
 
-```bash
-docker build -t casecommand .
-docker run -p 3000:3000 -v casecommand-data:/app/data --env-file .env casecommand
+1. Push to GitHub → Render **New → Web Service** → auto-detects `render.yaml`
+   (includes a persistent disk so the database survives deploys)
+2. Set environment variables:
+   - `ANTHROPIC_API_KEY` — from [console.anthropic.com](https://console.anthropic.com/settings/keys)
+   - `AUTH_TOKEN` — **required in practice** (client data!):
+     `python -c "import secrets; print(secrets.token_urlsafe(32))"`
+
+## Models & cost controls
+
+| Setting | Default | Why |
+|---|---|---|
+| `CLAUDE_MODEL` | `claude-opus-4-8` | Anthropic's recommended agentic model — chat + drafting quality |
+| `WORKER_MODEL` | `claude-sonnet-5` | Near-Opus agentic quality at the high-volume price tier for hourly cycles |
+| `PARALEGAL_INTERVAL` | `3600` | Cycle frequency in seconds (0 disables) |
+| `CYCLE_MAX_ITERATIONS` | `12` | Hard cap on tool-use rounds per cycle — bounds API spend |
+
+Prompt caching is enabled on the system prompt (`cache_control: ephemeral`),
+cutting repeat-context input cost by up to ~90% across agent iterations.
+Note: new-generation models (Opus 4.7+, Sonnet 5) no longer accept
+`temperature` — the client handles this automatically.
+
+## API
+
 ```
+# Agentic
+POST   /api/chat                     CaseCommander (multi-turn, uses tools)
+POST   /api/agent/cycle              Run a paralegal cycle now
+POST   /api/agent/draft              Draft a document into the review queue
+GET    /api/agent/runs               Cycle history (with token usage)
 
-## What You Get
+# Review queue (the human-in-the-loop gate)
+GET    /api/review/queue             Pending docs + urgent tasks + deadlines
+GET    /api/documents[/{id}]         List / read drafts
+POST   /api/documents/{id}/review    {action: approve|reject, note}
 
-| Feature | How |
-|---------|-----|
-| **Dashboard** | All cases, deadlines, portfolio valuation at a glance |
-| **Case View** | Full case detail with timeline, modules, activity |
-| **⚡ CaseCommander** | Multi-turn AI chat with full case context (click the ⚡ button) |
-| **🔍 DisputeFlow** | Paste discovery responses → AI deficiency analysis |
-| **✉️ M&C Letters** | Click Generate M&C → complete meet & confer letter |
-| **⚖️ Motion Cascade** | Separate statement + motion + declaration + order |
-| **⚖️ Cross Outlines** | 25+ question examination outlines with source citations |
-| **🤝 Settlement** | Data-driven valuation with comparable verdict analysis |
-| **📄 Complaints** | Draft complete California complaints with all COAs |
+# Practice data
+GET/POST /api/cases, PUT/DELETE /api/cases/{id}
+GET/POST /api/tasks, PATCH /api/tasks/{id}
+GET/POST /api/deadlines
+POST   /api/deadlines/compute        CA deadline math from a trigger event
+GET    /api/audit                    Supervision audit trail
+GET    /api/health                   Status incl. worker state (public)
+POST   /api/ai, GET /api/digest      Legacy endpoints for the bundled UI
+```
 
 ## Files
 
 ```
-casecommand/
-├── server.py              # FastAPI server (all routes + AI calls)
-├── database.py            # SQLite persistence layer
-├── index.html             # Bundled React frontend
-├── .env.example           # Template config
-├── .env                   # Your config (create from .env.example)
-├── requirements.txt       # Python dependencies
-├── Dockerfile             # Container deployment
-├── render.yaml            # Render.com deployment config
-├── start.sh               # One-command launcher
-├── tests/                 # Test suite (62 tests)
-│   ├── conftest.py
-│   ├── test_health.py
-│   ├── test_cases.py
-│   ├── test_chat.py
-│   ├── test_deadlines.py
-│   ├── test_sessions.py
-│   ├── test_rate_limit.py
-│   ├── test_auth.py
-│   └── test_database.py
-└── .github/workflows/
-    └── ci.yml             # GitHub Actions CI
+server.py          FastAPI app: routes, auth, rate limiting, middleware
+agent.py           Agentic loop + system prompts (incl. ethics constraints)
+tools.py           13 agent tools — all DB-only, all audit-logged
+worker.py          Autonomous paralegal scheduler
+rules.py           California deadline rules engine (CCP/CRC/Gov C)
+claude_client.py   Anthropic API client: pooling, retries, caching, tool use
+database.py        SQLite: cases, documents, tasks, deadlines, audit, runs
+static/admin.html  Attorney dashboard / review queue
+tests/             126 tests
 ```
 
-## API Endpoints
-
-```
-GET    /              → Serves the UI
-GET    /api/health    → Server status (public)
-GET    /api/cases     → All cases
-GET    /api/cases/:id → Single case
-POST   /api/cases     → Create a case
-PUT    /api/cases/:id → Update a case
-DELETE /api/cases/:id → Delete a case
-POST   /api/chat      → CaseCommander conversation
-POST   /api/ai        → Generic AI call (any module)
-GET    /api/deadlines → All upcoming deadlines
-GET    /api/digest    → AI-generated daily digest
-GET    /docs          → Swagger API documentation
-```
-
-## Authentication
-
-Set `AUTH_TOKEN` in `.env` to enable bearer token authentication:
+## Testing
 
 ```bash
-# Generate a secure token
-python -c "import secrets; print(secrets.token_urlsafe(32))"
+python -m pytest tests/ -v      # 126 tests, no API key needed (AI mocked)
 ```
 
-When enabled, all API endpoints (except `/api/health` and `/`) require:
-```
-Authorization: Bearer <your-token>
-```
+## Ethics & supervision model (read this)
 
-When `AUTH_TOKEN` is not set, authentication is disabled (open access).
+This system is built for **autonomous preparation with supervised output**:
 
-## Configuration
+1. **The agent works continuously without being asked** — but its universe
+   ends at the database. It cannot communicate with courts, opposing
+   counsel, or clients.
+2. **You review everything before it leaves** — the `/admin` queue is the
+   single choke point. Approving marks work product ready; *sending remains
+   a human act you perform yourself.*
+3. **Citations are never trusted** — any draft containing legal citations
+   generates a mandatory verification task before you approve.
+4. **Everything is logged** — the audit trail documents your supervision
+   for RPC 5.3 compliance.
+5. **Deadline math is a drafting aid** — every computed date carries a
+   verification flag; check local rules and standing orders.
 
-All configuration is via environment variables. See `.env.example` for the full list.
+## Roadmap (next integrations)
 
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `ANTHROPIC_API_KEY` | Yes | — | Anthropic API key |
-| `AUTH_TOKEN` | No | — | Bearer token for API auth (disabled if empty) |
-| `CLAUDE_MODEL` | No | `claude-sonnet-4-5-20250514` | Claude model to use |
-| `PORT` | No | `3000` | Server port |
-| `LOG_LEVEL` | No | `INFO` | Logging level |
-| `DATABASE_PATH` | No | `./casecommand.db` | SQLite database file path |
-| `ALLOWED_ORIGINS` | No | `*` | CORS origins (comma-separated) |
-| `SESSION_TTL_SECONDS` | No | `3600` | Session expiry time |
-| `MAX_SESSIONS` | No | `1000` | Max concurrent sessions |
-| `RATE_LIMIT_REQUESTS` | No | `30` | Max AI requests per window |
-| `RATE_LIMIT_WINDOW` | No | `60` | Rate limit window (seconds) |
-
-## Running Tests
-
-```bash
-pip install pytest
-python -m pytest tests/ -v
-```
-
-## Production Features
-
-- **SQLite database** with auto-seeded demo data and full CRUD
-- **Bearer token authentication** (optional, timing-safe comparison)
-- **Structured logging** with configurable log level
-- **Security headers** (X-Content-Type-Options, X-Frame-Options, etc.)
-- **CORS** with configurable allowed origins
-- **GZip compression** on responses > 500 bytes
-- **Rate limiting** on AI endpoints (per-IP, proxy-aware)
-- **Input validation** with size limits on all user inputs
-- **Session management** with TTL-based cleanup and capacity limits
-- **Connection pooling** for Claude API (shared httpx client)
-- **Request tracking** via X-Request-ID header
-- **UI caching** — HTML loaded once at startup
-- **Trusted proxy support** — correct client IP behind Render/Nginx
-- **Docker health check** built in
-- **Graceful shutdown** with background task and HTTP client cleanup
-
-## Troubleshooting
-
-**"No API key" on startup?**
-→ Edit `.env` and add your `ANTHROPIC_API_KEY`
-
-**Port 3000 in use?**
-→ `PORT=8000 python server.py`
-
-**Want to access from phone/other device?**
-→ Already listening on `0.0.0.0` — use your computer's IP: `http://192.168.x.x:3000`
+- **Citations API grounding** — attach case documents to drafting calls so
+  every factual assertion carries a pinpoint citation to the record
+  (Anthropic Citations API; eliminates source hallucination)
+- **Document ingestion** — upload discovery responses/medical records for
+  grounded analysis (today you paste text via chat)
+- **Email/calendar via MCP** — *read* incoming mail to auto-detect trigger
+  events; outbound remains behind the approval gate
+- **Batch API overnight review** — 50% cost reduction for bulk document
+  review runs
+- **Claude for Legal plugins** — Anthropic's litigation practice plugins
+  and legal MCP connectors (Westlaw, Everlaw, Trellis) as they fit

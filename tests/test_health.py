@@ -11,13 +11,23 @@ def test_health_endpoint(client):
     assert "active_sessions" in data
     assert "timestamp" in data
     assert "model" in data
+    assert "worker_model" in data
     assert "auth_enabled" in data
+    assert "paralegal" in data
+    assert data["paralegal"]["enabled"] is False  # disabled in tests
 
 
 def test_ui_served(client):
     resp = client.get("/")
     assert resp.status_code == 200
     assert "text/html" in resp.headers["content-type"]
+
+
+def test_admin_served(client):
+    resp = client.get("/admin")
+    assert resp.status_code == 200
+    assert "text/html" in resp.headers["content-type"]
+    assert "Paralegal Dashboard" in resp.text
 
 
 def test_security_headers(client):

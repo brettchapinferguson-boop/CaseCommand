@@ -7,9 +7,9 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
-COPY server.py .
-COPY database.py .
+COPY server.py database.py claude_client.py agent.py tools.py rules.py worker.py ./
 COPY index.html .
+COPY static/ static/
 
 # Create volume mount point for database persistence
 VOLUME /app/data

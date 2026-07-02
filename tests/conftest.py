@@ -5,8 +5,8 @@ from unittest.mock import AsyncMock, patch
 
 # Set test environment before importing app
 os.environ["ANTHROPIC_API_KEY"] = "sk-ant-test-key-for-testing"
-os.environ["CLAUDE_MODEL"] = "claude-sonnet-4-5-20250514"
-# Set a default; each test will get its own DB via fixture
+os.environ["CLAUDE_MODEL"] = "claude-opus-4-8"
+os.environ["PARALEGAL_INTERVAL"] = "0"  # disable background worker in tests
 os.environ["DATABASE_PATH"] = tempfile.mktemp(suffix=".db")
 
 from fastapi.testclient import TestClient
@@ -35,7 +35,7 @@ def client(tmp_path):
 
 @pytest.fixture
 def mock_claude_success():
-    """Mock a successful Claude API response."""
+    """Mock a successful text-only Claude response (for /api/ai, /api/digest)."""
     mock_response = {
         "success": True,
         "text": "This is a test response from Claude.",
@@ -47,13 +47,41 @@ def mock_claude_success():
 
 @pytest.fixture
 def mock_claude_failure():
-    """Mock a failed Claude API response."""
+    """Mock a failed text-only Claude response."""
     mock_response = {
         "success": False,
         "text": "",
         "error": "AI service unavailable",
     }
     with patch("server.call_claude", new_callable=AsyncMock, return_value=mock_response) as mock:
+        yield mock
+
+
+@pytest.fixture
+def mock_agent_success():
+    """Mock a successful agentic run (for /api/chat, /api/agent/draft)."""
+    mock_response = {
+        "success": True,
+        "text": "This is a test response from Claude.",
+        "actions": ["create_task(title=Follow up)"],
+        "usage": {"input_tokens": 200, "output_tokens": 80},
+        "error": None,
+    }
+    with patch("server.run_agent", new_callable=AsyncMock, return_value=mock_response) as mock:
+        yield mock
+
+
+@pytest.fixture
+def mock_agent_failure():
+    """Mock a failed agentic run."""
+    mock_response = {
+        "success": False,
+        "text": "",
+        "actions": [],
+        "usage": {"input_tokens": 0, "output_tokens": 0},
+        "error": "AI service unavailable",
+    }
+    with patch("server.run_agent", new_callable=AsyncMock, return_value=mock_response) as mock:
         yield mock
 
 

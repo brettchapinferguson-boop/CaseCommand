@@ -28,7 +28,7 @@ def test_auth_enabled_accepts_valid_token(auth_client, auth_headers):
     assert resp.status_code == 200
 
 
-def test_auth_enabled_on_post(auth_client, auth_headers, mock_claude_success):
+def test_auth_enabled_on_post(auth_client, auth_headers, mock_agent_success):
     """Auth works on POST endpoints too."""
     # Without auth
     resp = auth_client.post("/api/chat", json={"message": "test"})

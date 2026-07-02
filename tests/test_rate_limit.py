@@ -35,7 +35,7 @@ def test_rate_limit_per_ip():
         server.RATE_LIMIT_REQUESTS = original
 
 
-def test_rate_limit_integration(client, mock_claude_success):
+def test_rate_limit_integration(client, mock_agent_success):
     """Test that rate limiting applies to AI endpoints via HTTP."""
     original = server.RATE_LIMIT_REQUESTS
     server.RATE_LIMIT_REQUESTS = 2
